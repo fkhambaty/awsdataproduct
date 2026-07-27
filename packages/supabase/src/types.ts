@@ -162,6 +162,69 @@ export interface Database {
         };
         Update: Partial<Database["public"]["Tables"]["rewards"]["Insert"]>;
       };
+      learning_packs: {
+        Row: {
+          id: string;
+          parent_id: string;
+          title: string;
+          subject: string;
+          theme: string;
+          status: "draft" | "ready";
+          source_text: string;
+          generated: Record<string, unknown>;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          parent_id: string;
+          title?: string;
+          subject?: string;
+          theme?: string;
+          status?: "draft" | "ready";
+          source_text?: string;
+          generated?: Record<string, unknown>;
+        };
+        Update: Partial<Database["public"]["Tables"]["learning_packs"]["Insert"]>;
+      };
+      pack_pages: {
+        Row: {
+          id: string;
+          pack_id: string;
+          parent_id: string;
+          storage_path: string | null;
+          ocr_text: string;
+          edited_text: string;
+          order_index: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          pack_id: string;
+          parent_id: string;
+          storage_path?: string | null;
+          ocr_text?: string;
+          edited_text?: string;
+          order_index?: number;
+        };
+        Update: Partial<Database["public"]["Tables"]["pack_pages"]["Insert"]>;
+      };
+      pack_assignments: {
+        Row: {
+          id: string;
+          pack_id: string;
+          child_id: string;
+          parent_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          pack_id: string;
+          child_id: string;
+          parent_id: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["pack_assignments"]["Insert"]>;
+      };
       coaching_skill_axes: {
         Row: {
           id: string;
@@ -288,3 +351,6 @@ export type Game = Database["public"]["Tables"]["games"]["Row"];
 export type Progress = Database["public"]["Tables"]["progress"]["Row"];
 export type Unlock = Database["public"]["Tables"]["unlocks"]["Row"];
 export type Reward = Database["public"]["Tables"]["rewards"]["Row"];
+export type LearningPack = Database["public"]["Tables"]["learning_packs"]["Row"];
+export type PackPage = Database["public"]["Tables"]["pack_pages"]["Row"];
+export type PackAssignment = Database["public"]["Tables"]["pack_assignments"]["Row"];

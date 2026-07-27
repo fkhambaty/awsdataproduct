@@ -11,7 +11,16 @@ import {
   type ProgressRowLike,
   type SkillAxisCapabilityMapRow,
 } from "./coachingReport";
-import type { Child, Database, Parent, Progress, Unlock, Reward } from "./types";
+import type {
+  Child,
+  Database,
+  Parent,
+  Progress,
+  Unlock,
+  Reward,
+  LearningPack,
+  PackPage,
+} from "./types";
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
@@ -505,6 +514,214 @@ export async function awardReward(
     .single();
   if (error) throw error;
   return data as Reward;
+}
+
+// ── Learning Packs (textbook photos → games) ─────────────────────────────────
+
+export interface PackPageInput {
+  /** Raw OCR text extracted on-device. */
+  ocrText: string;
+  /** Parent-reviewed text used for game generation. */
+  editedText: string;
+  /** Optional page image as a data URL; uploaded best-effort to private storage. */
+  imageDataUrl?: string | null;
+}
+
+export interface CreateLearningPackInput {
+  title: string;
+  subject?: string;
+  theme?: string;
+  sourceText: string;
+  /** Cached generated output, e.g. { games: GameConfig[], generatedAt }. */
+  generated: Record<string, unknown>;
+  pages: PackPageInput[];
+  status?: "draft" | "ready";
+}
+
+export interface LearningPackWithMeta extends LearningPack {
+  pageCount: number;
+  assignedChildIds: string[];
+}
+
+function dataUrlToBlob(dataUrl: string): Blob | null {
+  const match = /^data:([^;]+);base64,(.*)$/.exec(dataUrl);
+  if (!match) return null;
+  const mime = match[1];
+  const binary = atob(match[2]);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+/** Best-effort upload of a page image; returns the storage path or null on failure. */
+async function uploadPackImage(
+  parentId: string,
+  packId: string,
+  index: number,
+  dataUrl: string,
+): Promise<string | null> {
+  try {
+    const blob = dataUrlToBlob(dataUrl);
+    if (!blob) return null;
+    const path = `${parentId}/${packId}/page-${index}.jpg`;
+    const { error } = await supabase.storage
+      .from("book-uploads")
+      .upload(path, blob, { upsert: true, contentType: blob.type || "image/jpeg" });
+    if (error) return null;
+    return path;
+  } catch {
+    return null;
+  }
+}
+
+export async function createLearningPack(input: CreateLearningPackInput): Promise<LearningPack> {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Not authenticated");
+  await ensureParentRowFromAuth(user);
+
+  const { data: packData, error: packError } = await supabase
+    .from("learning_packs")
+    .insert({
+      parent_id: user.id,
+      title: input.title,
+      subject: input.subject ?? "General",
+      theme: input.theme ?? "jungle",
+      status: input.status ?? "ready",
+      source_text: input.sourceText,
+      generated: input.generated,
+    } as never)
+    .select()
+    .single();
+  if (packError) throw packError;
+  const pack = packData as LearningPack;
+
+  const pageRows = await Promise.all(
+    input.pages.map(async (p, i) => {
+      const storagePath = p.imageDataUrl
+        ? await uploadPackImage(user.id, pack.id, i, p.imageDataUrl)
+        : null;
+      return {
+        pack_id: pack.id,
+        parent_id: user.id,
+        storage_path: storagePath,
+        ocr_text: p.ocrText,
+        edited_text: p.editedText,
+        order_index: i,
+      };
+    }),
+  );
+
+  if (pageRows.length > 0) {
+    const { error: pagesError } = await supabase.from("pack_pages").insert(pageRows as never);
+    if (pagesError) throw pagesError;
+  }
+
+  return pack;
+}
+
+export async function updateLearningPack(
+  packId: string,
+  updates: Partial<Pick<LearningPack, "title" | "subject" | "theme" | "status" | "source_text" | "generated">>,
+): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Not authenticated");
+  const { error } = await supabase
+    .from("learning_packs")
+    .update(updates as never)
+    .eq("id", packId)
+    .eq("parent_id", user.id);
+  if (error) throw error;
+}
+
+export async function deleteLearningPack(packId: string): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Not authenticated");
+  const { error } = await supabase
+    .from("learning_packs")
+    .delete()
+    .eq("id", packId)
+    .eq("parent_id", user.id);
+  if (error) throw error;
+}
+
+export async function getLearningPacks(): Promise<LearningPackWithMeta[]> {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const [{ data: packs }, { data: pages }, { data: assignments }] = await Promise.all([
+    supabase.from("learning_packs").select("*").eq("parent_id", user.id).order("created_at", { ascending: false }),
+    supabase.from("pack_pages").select("pack_id").eq("parent_id", user.id),
+    supabase.from("pack_assignments").select("pack_id, child_id").eq("parent_id", user.id),
+  ]);
+
+  const pageCounts = new Map<string, number>();
+  for (const row of (pages as { pack_id: string }[] | null) ?? []) {
+    pageCounts.set(row.pack_id, (pageCounts.get(row.pack_id) ?? 0) + 1);
+  }
+  const assignMap = new Map<string, string[]>();
+  for (const row of (assignments as { pack_id: string; child_id: string }[] | null) ?? []) {
+    const arr = assignMap.get(row.pack_id) ?? [];
+    arr.push(row.child_id);
+    assignMap.set(row.pack_id, arr);
+  }
+
+  return ((packs as LearningPack[] | null) ?? []).map((p) => ({
+    ...p,
+    pageCount: pageCounts.get(p.id) ?? 0,
+    assignedChildIds: assignMap.get(p.id) ?? [],
+  }));
+}
+
+export async function getLearningPackPages(packId: string): Promise<PackPage[]> {
+  const { data, error } = await supabase
+    .from("pack_pages")
+    .select("*")
+    .eq("pack_id", packId)
+    .order("order_index", { ascending: true });
+  if (error) throw error;
+  return (data as PackPage[]) ?? [];
+}
+
+/** Replace the set of children a pack is assigned to. */
+export async function setPackAssignments(packId: string, childIds: string[]): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { error: delError } = await supabase
+    .from("pack_assignments")
+    .delete()
+    .eq("pack_id", packId)
+    .eq("parent_id", user.id);
+  if (delError) throw delError;
+
+  if (childIds.length === 0) return;
+  const rows = childIds.map((childId) => ({
+    pack_id: packId,
+    child_id: childId,
+    parent_id: user.id,
+  }));
+  const { error: insError } = await supabase.from("pack_assignments").insert(rows as never);
+  if (insError) throw insError;
+}
+
+/** Ready packs assigned to a specific child (for the kid "My Lessons" screen). */
+export async function getAssignedPacksForChild(childId: string): Promise<LearningPack[]> {
+  const { data: assignments, error: aErr } = await supabase
+    .from("pack_assignments")
+    .select("pack_id")
+    .eq("child_id", childId);
+  if (aErr || !assignments) return [];
+  const packIds = (assignments as { pack_id: string }[]).map((a) => a.pack_id);
+  if (packIds.length === 0) return [];
+
+  const { data: packs, error: pErr } = await supabase
+    .from("learning_packs")
+    .select("*")
+    .in("id", packIds)
+    .eq("status", "ready")
+    .order("created_at", { ascending: false });
+  if (pErr || !packs) return [];
+  return packs as LearningPack[];
 }
 
 // ── Leaderboard ──────────────────────────────────────────────────────────────
