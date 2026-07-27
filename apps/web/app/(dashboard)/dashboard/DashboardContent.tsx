@@ -909,6 +909,36 @@ export default function DashboardPage() {
           </motion.a>
         </motion.section>
 
+        {/* Learning Packs — turn textbook photos into games */}
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35 }}
+          className="mb-6"
+        >
+          <motion.a
+            href="/dashboard/packs"
+            whileHover={{ scale: 1.01, y: -2 }}
+            whileTap={{ scale: 0.99 }}
+            className="kid-glass-panel flex items-center gap-4 rounded-kid p-4 sm:p-5"
+            style={{ background: "linear-gradient(135deg, #eef2ff, #fdf4ff)", border: "2px solid #c7d2fe" }}
+          >
+            <span className="text-3xl sm:text-4xl" aria-hidden>📚</span>
+            <div className="flex-1">
+              <p className="font-display text-base font-black text-indigo-900 sm:text-lg">
+                Learning Packs — from your child&apos;s textbook
+              </p>
+              <p className="mt-0.5 text-xs font-semibold leading-snug text-indigo-700/80 sm:text-sm">
+                Upload photos of a few book pages. We turn them into games so your child
+                learns those exact pages by playing.
+              </p>
+            </div>
+            <span className="kid-glass-btn kid-glass-violet hidden rounded-xl px-4 py-2 text-sm font-bold sm:inline-flex">
+              Open
+            </span>
+          </motion.a>
+        </motion.section>
+
         {/* Grown-up Headquarters — growth & smarts report */}
         <motion.section
           initial={{ opacity: 0, y: 20 }}
