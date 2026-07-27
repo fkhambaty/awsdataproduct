@@ -12,8 +12,9 @@ import {
   type Child,
   type LearningPackWithMeta,
 } from "@funberry/supabase";
-import { generateLesson, cleanLessonText, type GeneratedLesson } from "@funberry/game-engine";
+import { generateLesson, cleanLessonText, type GeneratedLesson, type GameConfig } from "@funberry/game-engine";
 import { createOcrRunner, fileToDataUrl, assessPageQuality } from "./ocr";
+import { PackReviewEditor } from "./PackReviewEditor";
 
 const THEMES = [
   { id: "jungle", label: "Jungle", emoji: "🌴" },
@@ -22,15 +23,6 @@ const THEMES = [
   { id: "candy", label: "Candy", emoji: "🍭" },
   { id: "dino", label: "Dino", emoji: "🦕" },
 ] as const;
-
-const GAME_TYPE_LABEL: Record<string, string> = {
-  picture_quiz: "Fill in the Blank",
-  true_false: "True or False",
-  drag_sort: "Sort into Groups",
-  word_picture_link: "Word Match",
-  memory_match: "Memory Match",
-  sequence_builder: "Put It in Order",
-};
 
 interface WizardPage {
   id: string;
@@ -451,27 +443,33 @@ function PackWizard({
       return next;
     });
 
-  const handleSave = useCallback(async () => {
-    if (!generated) return;
-    setSaving(true);
-    try {
-      const pack = await createLearningPack({
-        title: title || "My Lesson",
-        subject,
-        theme,
-        sourceText: combinedText,
-        status: "ready",
-        generated: { games: generated.games, keywords: generated.keywords, generatedAt: new Date().toISOString() },
-        pages: pages.map((p) => ({ ocrText: p.ocrText, editedText: p.editedText, imageDataUrl: p.dataUrl })),
-      });
-      if (selected.size > 0) {
-        await setPackAssignments(pack.id, [...selected]);
+  const handleSave = useCallback(
+    async (finalGames: GameConfig[]) => {
+      setSaving(true);
+      try {
+        const pack = await createLearningPack({
+          title: title || "My Lesson",
+          subject,
+          theme,
+          sourceText: combinedText,
+          status: "ready",
+          generated: {
+            games: finalGames,
+            keywords: generated?.keywords ?? [],
+            generatedAt: new Date().toISOString(),
+          },
+          pages: pages.map((p) => ({ ocrText: p.ocrText, editedText: p.editedText, imageDataUrl: p.dataUrl })),
+        });
+        if (selected.size > 0) {
+          await setPackAssignments(pack.id, [...selected]);
+        }
+        onSaved();
+      } finally {
+        setSaving(false);
       }
-      onSaved();
-    } finally {
-      setSaving(false);
-    }
-  }, [generated, title, subject, theme, combinedText, pages, selected, onSaved]);
+    },
+    [generated, title, subject, theme, combinedText, pages, selected, onSaved],
+  );
 
   const anyDone = pages.some((p) => p.status === "done");
 
@@ -724,56 +722,38 @@ function PackWizard({
         </div>
       )}
 
-      {/* Step 4: preview + save */}
+      {/* Step 4: review + approve + save */}
       {step === 4 && (
-        <div>
-          <h2 className="font-display text-xl font-black text-slate-800">4. Your games are ready!</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            These games were built from your pages. Your child plays them like any other game.
-          </p>
-
-          {generated && generated.games.length > 0 ? (
-            <div className="mt-4 space-y-2">
-              {generated.games.map((g) => (
-                <div key={g.id} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/80 p-3">
-                  <span className="text-2xl">🎮</span>
-                  <div>
-                    <p className="font-display text-sm font-black text-slate-800">{g.title}</p>
-                    <p className="text-[11px] font-bold text-slate-400">{GAME_TYPE_LABEL[g.type] ?? g.type}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
+        generated && generated.games.length > 0 ? (
+          <PackReviewEditor
+            games={generated.games}
+            saving={saving}
+            onBack={() => setStep(3)}
+            onSave={handleSave}
+          />
+        ) : (
+          <div>
+            <h2 className="font-display text-xl font-black text-slate-800">4. Review &amp; approve</h2>
             <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
               We couldn&apos;t build games from this text. Go back and add clearer pages or a bit more text.
             </div>
-          )}
-
-          {generated && generated.warnings.length > 0 && (
-            <details className="mt-3 rounded-2xl border border-slate-200 bg-white/70 p-3 text-xs text-slate-500">
-              <summary className="cursor-pointer font-bold">Why not more games?</summary>
-              <ul className="mt-2 list-disc pl-5">
-                {generated.warnings.map((w, i) => (
-                  <li key={i}>{w}</li>
-                ))}
-              </ul>
-            </details>
-          )}
-
-          <div className="mt-6 flex justify-between">
-            <button onClick={() => setStep(3)} className="kid-glass-btn kid-glass-muted rounded-2xl px-5 py-2.5 text-sm font-bold">
-              ← Back
-            </button>
-            <button
-              disabled={saving || !generated || generated.games.length === 0}
-              onClick={handleSave}
-              className="kid-glass-btn kid-glass-leaf rounded-2xl px-6 py-2.5 text-sm font-black disabled:opacity-40"
-            >
-              {saving ? "Saving…" : "Save pack ✓"}
-            </button>
+            {generated && generated.warnings.length > 0 && (
+              <details className="mt-3 rounded-2xl border border-slate-200 bg-white/70 p-3 text-xs text-slate-500">
+                <summary className="cursor-pointer font-bold">Why not more games?</summary>
+                <ul className="mt-2 list-disc pl-5">
+                  {generated.warnings.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            <div className="mt-6">
+              <button onClick={() => setStep(3)} className="kid-glass-btn kid-glass-muted rounded-2xl px-5 py-2.5 text-sm font-bold">
+                ← Back
+              </button>
+            </div>
           </div>
-        </div>
+        )
       )}
     </div>
   );
