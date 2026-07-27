@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { zones, getZoneById } from "@funberry/config";
@@ -347,6 +347,11 @@ export default function PlayContent() {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [childRank, setChildRank] = useState<{ rank: number; total: number } | null>(null);
   const [replayNonce, setReplayNonce] = useState(0);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
+  // Guards each play instance so stars are credited exactly once, even if a template's
+  // onComplete double-fires (e.g. React strict mode) or the component briefly remounts.
+  const reportedKeyRef = useRef<string | null>(null);
 
   // Load children on mount
   useEffect(() => {
@@ -398,8 +403,23 @@ export default function PlayContent() {
     setView("games");
   }
 
+  /**
+   * Kid "Home". Stays inside the SPA (no route reload) so there is no page flash.
+   * Home for a chosen player is the Worlds screen; otherwise the player picker.
+   */
+  function goHome() {
+    playTap();
+    setSelectedGame(null);
+    setSelectedZone(null);
+    reportedKeyRef.current = null;
+    setSaveState("idle");
+    setView(selectedChild ? "zones" : "who");
+  }
+
   function handleGameClick(game: GameConfig) {
     playTap();
+    reportedKeyRef.current = null;
+    setSaveState("idle");
     setSelectedGame(game);
     setView("playing");
   }
@@ -409,32 +429,43 @@ export default function PlayContent() {
    * so parent dashboards and coaching reports stay in sync. Mobile app placeholder does not call this yet.
    */
   async function handleGameComplete(result: GameResult) {
-    if (selectedGame) {
-      setCompletedGames((prev) => ({
-        ...prev,
-        [selectedGame.id]: Math.max(prev[selectedGame.id] ?? 0, result.starsEarned),
-      }));
+    if (!selectedGame) return;
 
-      if (selectedChild) {
-        try {
-          await saveProgress(
-            selectedChild.id,
-            selectedGame.id,
-            result.starsEarned,
-            result.score,
-            result.timeSpent,
-          );
-          const updatedKids = await getChildren();
-          setChildren(updatedKids);
-          const refreshed = updatedKids.find((c) => c.id === selectedChild.id);
-          if (refreshed) setSelectedChild(refreshed);
+    // Credit each play instance only once (dedupes double onComplete calls).
+    const playKey = `${selectedGame.id}-${replayNonce}`;
+    if (reportedKeyRef.current === playKey) return;
+    reportedKeyRef.current = playKey;
 
-          const rank = await getChildRank(selectedChild.id);
-          setChildRank(rank);
-        } catch (e) {
-          console.error("[play] saveProgress failed", e);
-        }
-      }
+    setCompletedGames((prev) => ({
+      ...prev,
+      [selectedGame.id]: Math.max(prev[selectedGame.id] ?? 0, result.starsEarned),
+    }));
+
+    if (!selectedChild) return;
+
+    setSaveState("saving");
+    try {
+      await saveProgress(
+        selectedChild.id,
+        selectedGame.id,
+        result.starsEarned,
+        result.score,
+        result.timeSpent,
+      );
+      const updatedKids = await getChildren();
+      setChildren(updatedKids);
+      const refreshed = updatedKids.find((c) => c.id === selectedChild.id);
+      if (refreshed) setSelectedChild(refreshed);
+
+      const rank = await getChildRank(selectedChild.id);
+      setChildRank(rank);
+      setSaveState("saved");
+      setTimeout(() => setSaveState("idle"), 2600);
+    } catch (e) {
+      console.error("[play] saveProgress failed", e);
+      // Allow a manual/automatic retry for this play instance.
+      reportedKeyRef.current = null;
+      setSaveState("error");
     }
   }
 
@@ -503,13 +534,15 @@ export default function PlayContent() {
         </AnimatePresence>
         <div className="mx-auto max-w-2xl">
           <div className="flex items-center justify-between mb-8">
-            <motion.a
-              href="/play"
+            <motion.button
+              type="button"
+              onClick={goHome}
               whileHover={{ scale: 1.06, x: -3 }}
+              whileTap={{ scale: 0.94 }}
               className="kid-glass-btn kid-glass-berry flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm"
             >
               🏠 Home
-            </motion.a>
+            </motion.button>
             <motion.button
               whileHover={{ scale: 1.06 }}
               whileTap={{ scale: 0.94 }}
@@ -621,14 +654,15 @@ export default function PlayContent() {
         <div className="mx-auto max-w-6xl">
           <div className="mb-4 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <motion.a
-                href="/play"
+              <motion.button
+                type="button"
+                onClick={goHome}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 className="kid-glass-btn kid-glass-berry rounded-xl px-3 py-2 text-xs font-bold sm:text-sm"
               >
                 🏠 Home
-              </motion.a>
+              </motion.button>
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -770,14 +804,15 @@ export default function PlayContent() {
           {/* Back navigation */}
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <motion.a
-                href="/play"
+              <motion.button
+                type="button"
+                onClick={goHome}
                 whileHover={{ scale: 1.06 }}
                 whileTap={{ scale: 0.94 }}
                 className="kid-glass-btn kid-glass-sky flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs sm:text-sm"
               >
                 🏠 Home
-              </motion.a>
+              </motion.button>
               <motion.button
                 whileHover={{ scale: 1.06, x: -3 }}
                 whileTap={{ scale: 0.94 }}
@@ -1004,6 +1039,42 @@ export default function PlayContent() {
               </button>
             </div>
           </motion.div>
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {saveState !== "idle" && (
+            <motion.div
+              initial={{ opacity: 0, y: 24, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 24, scale: 0.9 }}
+              transition={{ type: "spring", stiffness: 300, damping: 22 }}
+              className="fixed bottom-5 left-1/2 z-[70] -translate-x-1/2"
+              role="status"
+              aria-live="polite"
+            >
+              {saveState === "error" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    reportedKeyRef.current = null;
+                    if (selectedChild) loadProgress(selectedChild.id);
+                    setSaveState("idle");
+                  }}
+                  className="kid-glass-btn kid-glass-danger rounded-full px-5 py-2.5 text-sm font-black"
+                >
+                  Couldn&apos;t save — tap to retry
+                </button>
+              ) : (
+                <div
+                  className={`rounded-full px-5 py-2.5 text-sm font-black shadow-lg ${
+                    saveState === "saved" ? "kid-glass-btn kid-glass-leaf" : "kid-glass-btn kid-glass-sky"
+                  }`}
+                >
+                  {saveState === "saved" ? "⭐ Stars saved!" : "Saving your stars…"}
+                </div>
+              )}
+            </motion.div>
+          )}
         </AnimatePresence>
       </GameShell>
     </RankProvider>

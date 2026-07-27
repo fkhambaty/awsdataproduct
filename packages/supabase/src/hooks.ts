@@ -337,25 +337,43 @@ export async function getChildBestProgress(childId: string): Promise<Record<stri
   );
 }
 
+/** Retry a Supabase call once on transient failure so star crediting is reliable. */
+async function withRetry<T>(fn: () => Promise<T>, attempts = 2): Promise<T> {
+  let lastError: unknown;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (i < attempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 350));
+      }
+    }
+  }
+  throw lastError;
+}
+
 async function incrementChildStars(childId: string, delta: number): Promise<void> {
   if (delta <= 0) return;
-  const { error: rpcError } = await supabase.rpc("increment_stars" as never, {
-    p_child_id: childId,
-    p_stars: delta,
-  } as never);
-  if (!rpcError) return;
-  const { data: row, error: selErr } = await supabase
-    .from("children")
-    .select("total_stars")
-    .eq("id", childId)
-    .single();
-  if (selErr || row == null) throw selErr ?? new Error("Child not found for star update");
-  const cur = (row as { total_stars: number | null }).total_stars ?? 0;
-  const { error: upErr } = await supabase
-    .from("children")
-    .update({ total_stars: cur + delta } as never)
-    .eq("id", childId);
-  if (upErr) throw upErr;
+  await withRetry(async () => {
+    const { error: rpcError } = await supabase.rpc("increment_stars" as never, {
+      p_child_id: childId,
+      p_stars: delta,
+    } as never);
+    if (!rpcError) return;
+    const { data: row, error: selErr } = await supabase
+      .from("children")
+      .select("total_stars")
+      .eq("id", childId)
+      .single();
+    if (selErr || row == null) throw selErr ?? new Error("Child not found for star update");
+    const cur = (row as { total_stars: number | null }).total_stars ?? 0;
+    const { error: upErr } = await supabase
+      .from("children")
+      .update({ total_stars: cur + delta } as never)
+      .eq("id", childId);
+    if (upErr) throw upErr;
+  });
 }
 
 /**
@@ -389,40 +407,44 @@ export async function saveProgress(
     const prevStars = existing.stars_earned ?? 0;
     const newBestStars = Math.max(prevStars, starsEarned);
 
-    const { data, error } = await supabase
-      .from("progress")
-      .update({
-        stars_earned: newBestStars,
-        score,
-        time_spent_seconds: timeSpent,
-        attempts: (existing.attempts ?? 0) + 1,
-        completed: newBestStars > 0,
-        completed_at: newBestStars > 0 ? new Date().toISOString() : null,
-      } as never)
-      .eq("id", existing.id)
-      .select()
-      .single();
+    row = await withRetry(async () => {
+      const { data, error } = await supabase
+        .from("progress")
+        .update({
+          stars_earned: newBestStars,
+          score,
+          time_spent_seconds: timeSpent,
+          attempts: (existing.attempts ?? 0) + 1,
+          completed: newBestStars > 0,
+          completed_at: newBestStars > 0 ? new Date().toISOString() : null,
+        } as never)
+        .eq("id", existing.id)
+        .select()
+        .single();
 
-    if (error) throw error;
-    row = data as Progress;
+      if (error) throw error;
+      return data as Progress;
+    });
   } else {
-    const { data, error } = await supabase
-      .from("progress")
-      .insert({
-        child_id: childId,
-        game_id: gameId,
-        stars_earned: starsEarned,
-        score,
-        time_spent_seconds: timeSpent,
-        attempts: 1,
-        completed: starsEarned > 0,
-        completed_at: starsEarned > 0 ? new Date().toISOString() : null,
-      } as never)
-      .select()
-      .single();
+    row = await withRetry(async () => {
+      const { data, error } = await supabase
+        .from("progress")
+        .insert({
+          child_id: childId,
+          game_id: gameId,
+          stars_earned: starsEarned,
+          score,
+          time_spent_seconds: timeSpent,
+          attempts: 1,
+          completed: starsEarned > 0,
+          completed_at: starsEarned > 0 ? new Date().toISOString() : null,
+        } as never)
+        .select()
+        .single();
 
-    if (error) throw error;
-    row = data as Progress;
+      if (error) throw error;
+      return data as Progress;
+    });
   }
 
   if (starsEarned > 0) {

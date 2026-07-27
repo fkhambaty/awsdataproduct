@@ -54,8 +54,11 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
   }, []);
 
   const isParentSurface = pathname?.startsWith("/dashboard");
+  // The kid play surface (/play) has its own themed Home control, so the global
+  // floating Home button is hidden there to avoid a confusing duplicate button.
   const hideFloatingHome =
     pathname === "/" ||
+    pathname?.startsWith("/play") ||
     pathname?.startsWith("/login") ||
     pathname?.startsWith("/signup") ||
     pathname?.startsWith("/auth");

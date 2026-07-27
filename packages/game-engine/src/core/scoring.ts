@@ -2,18 +2,20 @@ import type { GameResult } from "../types";
 
 /**
  * Calculate star rating based on accuracy percentage.
+ *
+ * Finishing a round ALWAYS earns at least 1 star — this guarantees the star-credit
+ * system never looks "broken" to parents and keeps the reward loop encouraging.
+ * Better accuracy earns more:
  * 3 stars: >= 90%
  * 2 stars: >= 60%
- * 1 star:  >= 30%
- * 0 stars: < 30%
+ * 1 star:  < 60% (floor for completing the round)
  */
 export function calculateStars(score: number, maxScore: number): number {
-  if (maxScore === 0) return 0;
+  if (maxScore <= 0) return 1;
   const pct = (score / maxScore) * 100;
   if (pct >= 90) return 3;
   if (pct >= 60) return 2;
-  if (pct >= 30) return 1;
-  return 0;
+  return 1;
 }
 
 export function buildGameResult(
