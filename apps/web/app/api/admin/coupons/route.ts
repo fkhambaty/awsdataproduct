@@ -4,15 +4,18 @@ import { getServiceClient, verifyAdminUser } from "../auth";
 export const dynamic = "force-dynamic";
 
 async function guard(request: Request) {
-  if (!(await verifyAdminUser(request))) {
-    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }), admin: null };
-  }
   const admin = getServiceClient();
   if (!admin) {
     return {
-      error: NextResponse.json({ error: "Server not configured (service role)." }, { status: 503 }),
+      error: NextResponse.json(
+        { error: "Server not configured. Set SUPABASE_SERVICE_ROLE_KEY in Vercel." },
+        { status: 503 },
+      ),
       admin: null,
     };
+  }
+  if (!(await verifyAdminUser(request, admin))) {
+    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }), admin: null };
   }
   return { error: null, admin };
 }

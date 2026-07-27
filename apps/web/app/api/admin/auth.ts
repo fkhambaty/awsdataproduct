@@ -21,8 +21,8 @@ export function getAdminEmails(): string[] {
  * Admin auth: the caller must present a valid Supabase session (Bearer token) whose
  * email is on the allowlist. This is real authentication — no shared PIN.
  */
-export async function verifyAdminUser(request: Request): Promise<boolean> {
-  const admin = getServiceClient();
+export async function verifyAdminUser(request: Request, client?: SupabaseClient): Promise<boolean> {
+  const admin = client ?? getServiceClient();
   if (!admin) return false;
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
   if (!token) return false;

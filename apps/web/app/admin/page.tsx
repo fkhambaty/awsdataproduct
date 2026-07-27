@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase, signIn, signOut } from "@funberry/supabase";
 
 interface Coupon {
@@ -20,12 +20,35 @@ interface Stats {
   totalUsers: number;
   totalChildren: number;
   premiumUsers: number;
+  totalStars: number;
+  totalGamesPlayed: number;
+  totalPacks: number;
   activeCoupons: number;
   totalRedemptions: number;
   recentUsers: { email: string; name: string; subscription_tier: string; created_at: string }[];
 }
 
-type Phase = "loading" | "login" | "denied" | "ready";
+interface AdminUser {
+  id: string;
+  email: string;
+  name: string | null;
+  tier: string;
+  expiresAt: string | null;
+  createdAt: string;
+  children: number;
+  stars: number;
+  lastSignInAt: string | null;
+  emailConfirmed: boolean;
+}
+
+type Phase = "loading" | "login" | "denied" | "config" | "ready";
+
+function fmtDate(iso: string | null): string {
+  return iso ? new Date(iso).toLocaleDateString() : "—";
+}
+function fmtDateTime(iso: string | null): string {
+  return iso ? new Date(iso).toLocaleString() : "Never";
+}
 
 export default function AdminPage() {
   const [phase, setPhase] = useState<Phase>("loading");
@@ -33,10 +56,14 @@ export default function AdminPage() {
   const [password, setPassword] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginError, setLoginError] = useState("");
+  const [configError, setConfigError] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [stats, setStats] = useState<Stats | null>(null);
+  const [users, setUsers] = useState<AdminUser[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [busyUser, setBusyUser] = useState<string | null>(null);
 
   const [code, setCode] = useState("");
   const [freeDays, setFreeDays] = useState(7);
@@ -61,29 +88,38 @@ export default function AdminPage() {
     });
   }, []);
 
-  const loadAll = useCallback(async () => {
-    const [statsRes, couponsRes] = await Promise.all([
+  const loadAll = useCallback(async (): Promise<Phase> => {
+    const [s, u, c] = await Promise.all([
       authedFetch("/api/admin/stats"),
+      authedFetch("/api/admin/users"),
       authedFetch("/api/admin/coupons"),
     ]);
-    if (statsRes.status === 401 || couponsRes.status === 401) {
-      const err = new Error("unauthorized");
-      (err as Error & { code?: number }).code = 401;
-      throw err;
+    if ([s, u, c].some((r) => r.status === 503)) {
+      const j = (await s.json().catch(() => ({}))) as { error?: string };
+      setConfigError(j.error ?? "Server not configured.");
+      return "config";
     }
-    const s = (await statsRes.json()) as Stats;
-    const c = (await couponsRes.json()) as { coupons: Coupon[] };
-    setStats(s);
-    setCoupons(c.coupons ?? []);
+    if ([s, u, c].some((r) => r.status === 401)) return "denied";
+
+    const errs: string[] = [];
+    const sj = await s.json();
+    const uj = await u.json();
+    const cj = await c.json();
+    if (s.ok) setStats(sj as Stats);
+    else errs.push(sj.error ?? "stats error");
+    if (u.ok) setUsers((uj.users as AdminUser[]) ?? []);
+    else errs.push(uj.error ?? "users error");
+    if (c.ok) setCoupons((cj.coupons as Coupon[]) ?? []);
+    else errs.push(cj.error ?? "coupons error");
+    setLoadError(errs.length ? errs.join(" · ") : null);
+    return "ready";
   }, [authedFetch]);
 
   const tryLoad = useCallback(async () => {
     try {
-      await loadAll();
-      setPhase("ready");
-    } catch (e) {
-      if ((e as Error & { code?: number }).code === 401) setPhase("denied");
-      else setPhase("login");
+      setPhase(await loadAll());
+    } catch {
+      setPhase("login");
     }
   }, [loadAll]);
 
@@ -115,16 +151,17 @@ export default function AdminPage() {
     await signOut();
     setPhase("login");
     setStats(null);
+    setUsers([]);
     setCoupons([]);
   }
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     try {
       await loadAll();
     } catch {
       /* ignore */
     }
-  }
+  }, [loadAll]);
 
   async function createCoupon() {
     setCreating(true);
@@ -142,9 +179,8 @@ export default function AdminPage() {
         }),
       });
       const json = await res.json();
-      if (!res.ok) {
-        setMsg({ text: json.error ?? "Could not create coupon.", ok: false });
-      } else {
+      if (!res.ok) setMsg({ text: json.error ?? "Could not create coupon.", ok: false });
+      else {
         setMsg({ text: `Coupon ${json.coupon.code} created.`, ok: true });
         setCode("");
         setNote("");
@@ -158,18 +194,40 @@ export default function AdminPage() {
   }
 
   async function toggleCoupon(c: Coupon) {
-    await authedFetch("/api/admin/coupons", {
-      method: "PATCH",
-      body: JSON.stringify({ id: c.id, active: !c.active }),
-    });
+    await authedFetch("/api/admin/coupons", { method: "PATCH", body: JSON.stringify({ id: c.id, active: !c.active }) });
     await refresh();
   }
-
   async function deleteCoupon(c: Coupon) {
-    if (!confirm(`Delete coupon ${c.code}? This cannot be undone.`)) return;
+    if (!confirm(`Delete coupon ${c.code}?`)) return;
     await authedFetch("/api/admin/coupons", { method: "DELETE", body: JSON.stringify({ id: c.id }) });
     await refresh();
   }
+
+  async function userAction(u: AdminUser, action: "grant" | "revoke", days?: number) {
+    if (action === "revoke" && !confirm(`Revoke premium for ${u.email}?`)) return;
+    setBusyUser(u.id);
+    try {
+      await authedFetch("/api/admin/users", {
+        method: "PATCH",
+        body: JSON.stringify({ userId: u.id, action, days }),
+      });
+      await refresh();
+    } finally {
+      setBusyUser(null);
+    }
+  }
+
+  const recentLogins = useMemo(
+    () =>
+      [...users]
+        .filter((u) => u.lastSignInAt)
+        .sort((a, b) => new Date(b.lastSignInAt!).getTime() - new Date(a.lastSignInAt!).getTime())
+        .slice(0, 10),
+    [users],
+  );
+
+  const isActivePremium = (u: AdminUser) =>
+    u.tier !== "free" && (!u.expiresAt || new Date(u.expiresAt).getTime() > Date.now());
 
   // ── Loading ──
   if (phase === "loading") {
@@ -180,7 +238,29 @@ export default function AdminPage() {
     );
   }
 
-  // ── Login gate ──
+  // ── Config error ──
+  if (phase === "config") {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-900 p-6">
+        <div className="max-w-md rounded-2xl border border-amber-700 bg-slate-800 p-8 text-center">
+          <div className="mb-3 text-4xl">⚙️</div>
+          <h1 className="mb-2 text-lg font-bold text-amber-300">Admin not configured</h1>
+          <p className="text-sm text-slate-300">{configError}</p>
+          <p className="mt-3 text-xs text-slate-500">
+            Set the environment variables in Vercel and run migration 018, then reload.
+          </p>
+          <button
+            onClick={() => location.reload()}
+            className="mt-5 rounded-lg bg-slate-700 px-5 py-2 text-sm font-bold text-slate-100 hover:bg-slate-600"
+          >
+            Reload
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  // ── Login / denied ──
   if (phase === "login" || phase === "denied") {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-900 p-6">
@@ -193,7 +273,7 @@ export default function AdminPage() {
           <p className="mb-5 text-xs text-slate-400">Sign in with an authorized admin account.</p>
           {phase === "denied" && (
             <p className="mb-4 rounded-lg bg-rose-900/50 px-3 py-2 text-sm text-rose-300">
-              This account is not an admin. Sign in with an allowlisted email.
+              This account is not on the admin allowlist.
             </p>
           )}
           <input
@@ -232,10 +312,21 @@ export default function AdminPage() {
     );
   }
 
-  // ── Admin dashboard ──
+  // ── Control hub ──
+  const statCards = [
+    { label: "Registered users", value: stats?.totalUsers },
+    { label: "Premium users", value: stats?.premiumUsers },
+    { label: "Children", value: stats?.totalChildren },
+    { label: "Total stars", value: stats?.totalStars },
+    { label: "Games played", value: stats?.totalGamesPlayed },
+    { label: "Learning packs", value: stats?.totalPacks },
+    { label: "Active coupons", value: stats?.activeCoupons },
+    { label: "Coupon redemptions", value: stats?.totalRedemptions },
+  ];
+
   return (
     <main className="min-h-screen bg-slate-900 p-4 text-slate-100 sm:p-8">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-6xl">
         <header className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-black">FunBerry Control Hub</h1>
@@ -251,14 +342,15 @@ export default function AdminPage() {
           </div>
         </header>
 
-        <section className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
-          {[
-            { label: "Registered users", value: stats?.totalUsers },
-            { label: "Premium users", value: stats?.premiumUsers },
-            { label: "Children", value: stats?.totalChildren },
-            { label: "Active coupons", value: stats?.activeCoupons },
-            { label: "Coupon redemptions", value: stats?.totalRedemptions },
-          ].map((s) => (
+        {loadError && (
+          <div className="mb-4 rounded-lg bg-amber-900/40 px-4 py-2 text-sm font-semibold text-amber-300">
+            Some data could not load: {loadError}
+          </div>
+        )}
+
+        {/* Metrics */}
+        <section className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {statCards.map((s) => (
             <div key={s.label} className="rounded-xl border border-slate-700 bg-slate-800 p-4">
               <p className="text-3xl font-black text-violet-300">{s.value ?? "—"}</p>
               <p className="mt-1 text-xs font-semibold text-slate-400">{s.label}</p>
@@ -267,90 +359,141 @@ export default function AdminPage() {
         </section>
 
         {msg && (
-          <div
-            className={`mb-4 rounded-lg px-4 py-2 text-sm font-semibold ${msg.ok ? "bg-emerald-900/50 text-emerald-300" : "bg-rose-900/50 text-rose-300"}`}
-          >
+          <div className={`mb-4 rounded-lg px-4 py-2 text-sm font-semibold ${msg.ok ? "bg-emerald-900/50 text-emerald-300" : "bg-rose-900/50 text-rose-300"}`}>
             {msg.text}
           </div>
         )}
 
+        {/* Users */}
+        <section className="mb-8 rounded-xl border border-slate-700 bg-slate-800 p-5">
+          <h2 className="mb-4 text-lg font-bold">Users ({users.length})</h2>
+          {users.length === 0 ? (
+            <p className="text-sm text-slate-400">No users yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="py-2 pr-3">User</th>
+                    <th className="py-2 pr-3">Plan</th>
+                    <th className="py-2 pr-3">Kids</th>
+                    <th className="py-2 pr-3">Stars</th>
+                    <th className="py-2 pr-3">Joined</th>
+                    <th className="py-2 pr-3">Last login</th>
+                    <th className="py-2 pr-3">Controls</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((u) => (
+                    <tr key={u.id} className="border-t border-slate-700 align-top">
+                      <td className="py-2 pr-3">
+                        <div className="font-semibold text-slate-200">{u.name || "—"}</div>
+                        <div className="text-xs text-slate-400">{u.email}</div>
+                        {!u.emailConfirmed && <span className="text-[10px] font-bold text-amber-400">unverified</span>}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs font-bold ${isActivePremium(u) ? "bg-emerald-900/60 text-emerald-300" : "bg-slate-700 text-slate-400"}`}
+                        >
+                          {isActivePremium(u) ? u.tier.replace("premium_", "") : "free"}
+                        </span>
+                        {u.expiresAt && (
+                          <div className="mt-0.5 text-[10px] text-slate-500">until {fmtDate(u.expiresAt)}</div>
+                        )}
+                      </td>
+                      <td className="py-2 pr-3">{u.children}</td>
+                      <td className="py-2 pr-3">{u.stars}</td>
+                      <td className="py-2 pr-3 text-xs text-slate-400">{fmtDate(u.createdAt)}</td>
+                      <td className="py-2 pr-3 text-xs text-slate-400">{fmtDateTime(u.lastSignInAt)}</td>
+                      <td className="py-2 pr-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          <button
+                            disabled={busyUser === u.id}
+                            onClick={() => userAction(u, "grant", 7)}
+                            className="rounded-md bg-violet-700 px-2 py-1 text-[11px] font-bold hover:bg-violet-600 disabled:opacity-50"
+                          >
+                            +7d
+                          </button>
+                          <button
+                            disabled={busyUser === u.id}
+                            onClick={() => userAction(u, "grant", 30)}
+                            className="rounded-md bg-violet-700 px-2 py-1 text-[11px] font-bold hover:bg-violet-600 disabled:opacity-50"
+                          >
+                            +30d
+                          </button>
+                          <button
+                            disabled={busyUser === u.id}
+                            onClick={() => userAction(u, "revoke")}
+                            className="rounded-md bg-slate-700 px-2 py-1 text-[11px] font-bold text-slate-300 hover:bg-slate-600 disabled:opacity-50"
+                          >
+                            Revoke
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        {/* Recent logins */}
+        <section className="mb-8 rounded-xl border border-slate-700 bg-slate-800 p-5">
+          <h2 className="mb-4 text-lg font-bold">Recent logins</h2>
+          {recentLogins.length === 0 ? (
+            <p className="text-sm text-slate-400">No logins recorded yet.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {recentLogins.map((u) => (
+                <div key={u.id} className="flex items-center justify-between border-b border-slate-700/60 py-1.5 text-sm">
+                  <div className="min-w-0">
+                    <span className="font-semibold text-slate-200">{u.name || "—"}</span>{" "}
+                    <span className="text-slate-400">{u.email}</span>
+                  </div>
+                  <span className="shrink-0 text-xs text-slate-500">{fmtDateTime(u.lastSignInAt)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Create coupon */}
         <section className="mb-8 rounded-xl border border-slate-700 bg-slate-800 p-5">
           <h2 className="mb-4 text-lg font-bold">Create a coupon</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <label className="text-xs font-bold text-slate-400">
               Code
-              <input
-                value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-                placeholder="WELCOME1WEEK"
-                className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-violet-400"
-              />
+              <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="WELCOME1WEEK" className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-violet-400" />
             </label>
             <label className="text-xs font-bold text-slate-400">
               Free access (days)
-              <input
-                type="number"
-                min={0}
-                value={freeDays}
-                onChange={(e) => setFreeDays(Number(e.target.value))}
-                className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-violet-400"
-              />
+              <input type="number" min={0} value={freeDays} onChange={(e) => setFreeDays(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-violet-400" />
             </label>
             <label className="text-xs font-bold text-slate-400">
               Discount % (info)
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={discount}
-                onChange={(e) => setDiscount(Number(e.target.value))}
-                className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-violet-400"
-              />
+              <input type="number" min={0} max={100} value={discount} onChange={(e) => setDiscount(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-violet-400" />
             </label>
             <label className="text-xs font-bold text-slate-400">
               Expires (optional)
-              <input
-                type="date"
-                value={expiresAt}
-                onChange={(e) => setExpiresAt(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-violet-400"
-              />
+              <input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-violet-400" />
             </label>
             <label className="text-xs font-bold text-slate-400">
               Max redemptions (optional)
-              <input
-                type="number"
-                min={1}
-                value={maxRedemptions}
-                onChange={(e) => setMaxRedemptions(e.target.value)}
-                placeholder="Unlimited"
-                className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-violet-400"
-              />
+              <input type="number" min={1} value={maxRedemptions} onChange={(e) => setMaxRedemptions(e.target.value)} placeholder="Unlimited" className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-violet-400" />
             </label>
             <label className="text-xs font-bold text-slate-400">
               Note (optional)
-              <input
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Launch promo"
-                className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-violet-400"
-              />
+              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Launch promo" className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-violet-400" />
             </label>
           </div>
-          <button
-            onClick={createCoupon}
-            disabled={creating || !code}
-            className="mt-4 rounded-lg bg-violet-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-violet-500 disabled:opacity-50"
-          >
+          <button onClick={createCoupon} disabled={creating || !code} className="mt-4 rounded-lg bg-violet-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-violet-500 disabled:opacity-50">
             {creating ? "Creating…" : "+ Create coupon"}
           </button>
-          <p className="mt-2 text-xs text-slate-500">
-            &ldquo;Free access (days)&rdquo; is what a user gets on redeem (e.g. 7 = one week free). Discount % is stored
-            for your records / future paid-checkout discounts.
-          </p>
         </section>
 
-        <section className="mb-8 rounded-xl border border-slate-700 bg-slate-800 p-5">
+        {/* Coupon list */}
+        <section className="rounded-xl border border-slate-700 bg-slate-800 p-5">
           <h2 className="mb-4 text-lg font-bold">Coupons ({coupons.length})</h2>
           {coupons.length === 0 ? (
             <p className="text-sm text-slate-400">No coupons yet.</p>
@@ -378,26 +521,18 @@ export default function AdminPage() {
                         {c.redeemed_count}
                         {c.max_redemptions != null ? ` / ${c.max_redemptions}` : ""}
                       </td>
-                      <td className="py-2 pr-4">{c.expires_at ? new Date(c.expires_at).toLocaleDateString() : "—"}</td>
+                      <td className="py-2 pr-4">{fmtDate(c.expires_at)}</td>
                       <td className="py-2 pr-4">
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-xs font-bold ${c.active ? "bg-emerald-900/60 text-emerald-300" : "bg-slate-700 text-slate-400"}`}
-                        >
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${c.active ? "bg-emerald-900/60 text-emerald-300" : "bg-slate-700 text-slate-400"}`}>
                           {c.active ? "Active" : "Disabled"}
                         </span>
                       </td>
                       <td className="py-2 pr-4">
                         <div className="flex gap-2">
-                          <button
-                            onClick={() => toggleCoupon(c)}
-                            className="rounded-md bg-slate-700 px-2.5 py-1 text-xs font-bold hover:bg-slate-600"
-                          >
+                          <button onClick={() => toggleCoupon(c)} className="rounded-md bg-slate-700 px-2.5 py-1 text-xs font-bold hover:bg-slate-600">
                             {c.active ? "Disable" : "Enable"}
                           </button>
-                          <button
-                            onClick={() => deleteCoupon(c)}
-                            className="rounded-md bg-rose-900/70 px-2.5 py-1 text-xs font-bold text-rose-200 hover:bg-rose-800"
-                          >
+                          <button onClick={() => deleteCoupon(c)} className="rounded-md bg-rose-900/70 px-2.5 py-1 text-xs font-bold text-rose-200 hover:bg-rose-800">
                             Delete
                           </button>
                         </div>
@@ -407,30 +542,6 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
-          )}
-        </section>
-
-        <section className="rounded-xl border border-slate-700 bg-slate-800 p-5">
-          <h2 className="mb-4 text-lg font-bold">Recent sign-ups</h2>
-          {stats?.recentUsers?.length ? (
-            <div className="space-y-1.5">
-              {stats.recentUsers.map((u, i) => (
-                <div key={i} className="flex items-center justify-between border-b border-slate-700/60 py-1.5 text-sm">
-                  <div className="min-w-0">
-                    <span className="font-semibold text-slate-200">{u.name || "—"}</span>{" "}
-                    <span className="text-slate-400">{u.email}</span>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-3">
-                    <span className={`text-xs font-bold ${u.subscription_tier === "free" ? "text-slate-500" : "text-emerald-400"}`}>
-                      {u.subscription_tier}
-                    </span>
-                    <span className="text-xs text-slate-500">{new Date(u.created_at).toLocaleDateString()}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-slate-400">No users yet.</p>
           )}
         </section>
       </div>
