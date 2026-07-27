@@ -25,8 +25,8 @@ import {
   RankProvider,
 } from "@funberry/game-engine";
 import type { GameConfig, GameResult } from "@funberry/game-engine";
-import { getChildren, getChildBestProgress, saveProgress, verifyParentPin, getChildRank, getAssignedPacksForChild, getParent } from "@funberry/supabase";
-import type { Child, LearningPack, Parent } from "@funberry/supabase";
+import { getChildren, getChildBestProgress, saveProgress, verifyParentPin, getChildRank, getAssignedPacksForChild, getParent, getChildProgress } from "@funberry/supabase";
+import type { Child, LearningPack, Parent, Progress } from "@funberry/supabase";
 import { LeaderboardModal } from "../../components/Leaderboard";
 import { FunBerryLogo } from "../../components/FunBerryLogo";
 
@@ -366,6 +366,10 @@ export default function PlayContent() {
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [isPaid, setIsPaid] = useState(false);
   const [showLock, setShowLock] = useState(false);
+  const [showStarHistory, setShowStarHistory] = useState(false);
+  const [starHistory, setStarHistory] = useState<Progress[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [starBurst, setStarBurst] = useState<{ n: number; key: number } | null>(null);
 
   // Guards each play instance so stars are credited exactly once, even if a template's
   // onComplete double-fires (e.g. React strict mode) or the component briefly remounts.
@@ -399,6 +403,127 @@ export default function PlayContent() {
     const g = (selectedPack.generated as { games?: GameConfig[] } | null)?.games;
     return Array.isArray(g) ? g : [];
   }, [selectedPack]);
+
+  // Map every game id -> readable title (zone games + assigned pack games) for the ledger.
+  const gameTitleById = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const z of zones) {
+      for (const g of getGamesForZone(z.id)) m[g.id] = g.title;
+    }
+    for (const p of assignedPacks) {
+      const gs = (p.generated as { games?: GameConfig[] } | null)?.games ?? [];
+      for (const g of gs) m[g.id] = `${p.title}: ${g.title}`;
+    }
+    return m;
+  }, [assignedPacks]);
+
+  const openStarHistory = useCallback(async () => {
+    if (!selectedChild) return;
+    playTap();
+    setShowStarHistory(true);
+    setLoadingHistory(true);
+    try {
+      const rows = await getChildProgress(selectedChild.id);
+      setStarHistory(rows);
+    } catch {
+      setStarHistory([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [selectedChild]);
+
+  const titleForGame = useCallback(
+    (id: string) => gameTitleById[id] ?? id.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+    [gameTitleById],
+  );
+
+  function renderStarHistory() {
+    return (
+      <AnimatePresence>
+        {showStarHistory && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowStarHistory(false)}
+            className="fixed inset-0 z-[95] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="flex max-h-[80vh] w-full max-w-md flex-col rounded-kid bg-white p-5 shadow-2xl"
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <h3 className="font-display text-xl font-black text-slate-800">⭐ Star history</h3>
+                  <p className="text-xs font-bold text-amber-600">
+                    {selectedChild?.name} • {selectedChild?.total_stars ?? 0} stars total
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowStarHistory(false)}
+                  className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-500 hover:bg-slate-200"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {loadingHistory ? (
+                  <p className="py-8 text-center text-sm font-semibold text-slate-400">Loading…</p>
+                ) : starHistory.length === 0 ? (
+                  <div className="py-8 text-center">
+                    <p className="mb-1 text-4xl">🌟</p>
+                    <p className="text-sm font-semibold text-slate-500">
+                      No stars yet — finish a game to earn your first ones!
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {starHistory.map((row) => {
+                      const when = row.completed_at || row.created_at;
+                      return (
+                        <div
+                          key={row.id}
+                          className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-3"
+                        >
+                          <div className="flex min-w-0 flex-1 flex-col">
+                            <span className="truncate font-display text-sm font-black text-slate-800">
+                              {titleForGame(row.game_id)}
+                            </span>
+                            <span className="text-[11px] font-semibold text-slate-400">
+                              {when ? new Date(when).toLocaleString() : "—"}
+                              {row.score != null ? ` • score ${row.score}` : ""}
+                              {row.attempts ? ` • ${row.attempts} play${row.attempts === 1 ? "" : "s"}` : ""}
+                            </span>
+                          </div>
+                          <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-700">
+                            {"⭐".repeat(Math.max(1, row.stars_earned || 0))} {row.stars_earned}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => {
+                  setShowStarHistory(false);
+                  setShowLeaderboard(true);
+                }}
+                className="kid-glass-btn kid-glass-sunshine mt-3 shrink-0 rounded-2xl px-4 py-2.5 text-sm font-black"
+              >
+                🏆 Star Champions
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    );
+  }
 
   // Load children on mount
   useEffect(() => {
@@ -504,6 +629,14 @@ export default function PlayContent() {
 
     if (!selectedChild) return;
 
+    // Optimistically bump the top-right counter + fire the "+N ⭐" fly-up animation.
+    const earned = result.starsEarned;
+    if (earned > 0) {
+      setSelectedChild((prev) => (prev ? { ...prev, total_stars: (prev.total_stars ?? 0) + earned } : prev));
+      setStarBurst({ n: earned, key: Date.now() });
+      setTimeout(() => setStarBurst(null), 1800);
+    }
+
     setSaveState("saving");
     try {
       await saveProgress(
@@ -516,7 +649,13 @@ export default function PlayContent() {
       const updatedKids = await getChildren();
       setChildren(updatedKids);
       const refreshed = updatedKids.find((c) => c.id === selectedChild.id);
-      if (refreshed) setSelectedChild(refreshed);
+      // Never let a lagging refresh pull the visible count below the optimistic value.
+      if (refreshed) {
+        setSelectedChild((prev) => ({
+          ...refreshed,
+          total_stars: Math.max(refreshed.total_stars ?? 0, prev?.total_stars ?? 0),
+        }));
+      }
 
       const rank = await getChildRank(selectedChild.id);
       setChildRank(rank);
@@ -630,6 +769,8 @@ export default function PlayContent() {
             onClose={() => setShowLeaderboard(false)}
             highlightChildId={selectedChild?.id}
           />
+
+          {renderStarHistory()}
 
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -754,10 +895,8 @@ export default function PlayContent() {
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={() => {
-                  playTap();
-                  setShowLeaderboard(true);
-                }}
+                onClick={openStarHistory}
+                title="See your star history"
                 className="kid-glass-btn kid-glass-sunshine rounded-xl px-3 py-2 text-xs font-black sm:text-sm"
               >
                 ⭐ {selectedChild?.total_stars ?? 0}
@@ -781,6 +920,8 @@ export default function PlayContent() {
             onClose={() => setShowLeaderboard(false)}
             highlightChildId={selectedChild?.id}
           />
+
+          {renderStarHistory()}
 
           <motion.section
             initial={{ opacity: 0, y: 16 }}
@@ -1005,11 +1146,11 @@ export default function PlayContent() {
               <motion.button
                 whileHover={{ scale: 1.06 }}
                 whileTap={{ scale: 0.94 }}
-                onClick={() => { playTap(); setShowLeaderboard(true); }}
+                onClick={openStarHistory}
                 className="kid-glass-btn kid-glass-sunshine flex items-center gap-1 rounded-xl px-2.5 py-2 text-sm font-black tabular-nums"
-                title="Your stars — tap for Star Champions"
+                title="Your stars — tap for star history"
                 type="button"
-                aria-label={`You have ${selectedChild?.total_stars ?? 0} stars. Open Star Champions.`}
+                aria-label={`You have ${selectedChild?.total_stars ?? 0} stars. Open star history.`}
               >
                 <span className="text-base leading-none" aria-hidden>⭐</span>
                 {selectedChild?.total_stars ?? 0}
@@ -1032,6 +1173,8 @@ export default function PlayContent() {
             onClose={() => setShowLeaderboard(false)}
             highlightChildId={selectedChild?.id}
           />
+
+          {renderStarHistory()}
 
           {/* Zone header */}
           <motion.div
@@ -1283,6 +1426,7 @@ export default function PlayContent() {
         bookPageSrc={selectedGame?.bookPageSrc}
         onClose={() => { playTap(); setView(playingFromPack ? "packGames" : "zones"); setSelectedGame(null); }}
         onNextGame={handleNextGame}
+        onStarsClick={openStarHistory}
       >
         <AnimatePresence mode="wait">
           <motion.div
@@ -1352,6 +1496,30 @@ export default function PlayContent() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Fly-up "+N ⭐" toward the top-right star counter */}
+        <AnimatePresence>
+          {starBurst && (
+            <motion.div
+              key={starBurst.key}
+              initial={{ opacity: 0, scale: 0.5, y: 30 }}
+              animate={{ opacity: 1, scale: 1, y: -50 }}
+              exit={{ opacity: 0, scale: 0.4, y: -110 }}
+              transition={{ duration: 1.5, ease: [0.22, 1, 0.36, 1] }}
+              className="pointer-events-none fixed right-5 top-16 z-[75] rounded-full bg-amber-400 px-4 py-2 text-lg font-black text-amber-950 shadow-[0_8px_24px_rgba(245,158,11,0.5)]"
+              aria-hidden
+            >
+              +{starBurst.n} ⭐
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {renderStarHistory()}
+        <LeaderboardModal
+          open={showLeaderboard}
+          onClose={() => setShowLeaderboard(false)}
+          highlightChildId={selectedChild?.id}
+        />
       </GameShell>
     </RankProvider>
   );

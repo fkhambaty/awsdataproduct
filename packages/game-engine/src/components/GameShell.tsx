@@ -22,6 +22,8 @@ interface GameShellProps {
   bookPageSrc?: string;
   onClose: () => void;
   onNextGame?: () => void;
+  /** When set, the lifetime-star chip becomes a button (e.g. to open star history). */
+  onStarsClick?: () => void;
   children: React.ReactNode;
 }
 
@@ -37,6 +39,7 @@ export function GameShell({
   bookPageSrc,
   onClose,
   onNextGame,
+  onStarsClick,
   children,
 }: GameShellProps) {
   const [muted, setMuted] = React.useState(isMuted());
@@ -152,10 +155,13 @@ export function GameShell({
           }}
         >
           {lifetimeStars !== undefined && (
-            <motion.div
+            <motion.button
               key={lifetimeStars}
-              initial={{ scale: 1.12 }}
+              type="button"
+              onClick={onStarsClick}
+              initial={{ scale: 1.35 }}
               animate={{ scale: 1 }}
+              transition={{ type: "spring", stiffness: 320, damping: 14 }}
               className="kid-glass-stat kid-glass-stat--stars"
               style={{
                 display: "flex",
@@ -167,12 +173,14 @@ export function GameShell({
                 fontSize: 13,
                 color: "#b45309",
                 fontFamily: "Fredoka, sans-serif",
+                cursor: onStarsClick ? "pointer" : "default",
+                border: "none",
               }}
-              title="Your total stars"
+              title={onStarsClick ? "See your star history" : "Your total stars"}
             >
               <span style={{ fontSize: 16, lineHeight: 1 }}>⭐</span>
               <span style={{ fontVariantNumeric: "tabular-nums" }}>{lifetimeStars}</span>
-            </motion.div>
+            </motion.button>
           )}
 
           {streak > 0 && <StreakCounter count={streak} />}
