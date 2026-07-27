@@ -341,8 +341,8 @@ export function GameShell({
           transition={{ delay: 0.6, type: "spring", stiffness: 200, damping: 18 }}
           style={{
             position: "fixed",
-            bottom: 24,
-            right: 20,
+            bottom: "calc(24px + env(safe-area-inset-bottom, 0px))",
+            right: "calc(20px + env(safe-area-inset-right, 0px))",
             zIndex: 40,
             display: "flex",
             flexDirection: "column",

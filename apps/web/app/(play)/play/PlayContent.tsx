@@ -338,6 +338,7 @@ export default function PlayContent() {
   const router = useRouter();
   const [view, setView] = useState<ViewMode>("who");
   const [children, setChildren] = useState<Child[]>([]);
+  const [loadingChildren, setLoadingChildren] = useState(true);
   const [selectedChild, setSelectedChild] = useState<Child | null>(null);
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
   const [selectedGame, setSelectedGame] = useState<GameConfig | null>(null);
@@ -353,20 +354,6 @@ export default function PlayContent() {
   // onComplete double-fires (e.g. React strict mode) or the component briefly remounts.
   const reportedKeyRef = useRef<string | null>(null);
 
-  // Load children on mount
-  useEffect(() => {
-    getChildren()
-      .then((kids) => {
-        setChildren(kids);
-        // If exactly one child, auto-select them
-        if (kids.length === 1) {
-          setSelectedChild(kids[0]);
-          setView("zones");
-        }
-      })
-      .catch(() => {});
-  }, []);
-
   // Load DB progress when a child is selected
   const loadProgress = useCallback(async (childId: string) => {
     setLoadingProgress(true);
@@ -379,6 +366,22 @@ export default function PlayContent() {
       setLoadingProgress(false);
     }
   }, []);
+
+  // Load children on mount
+  useEffect(() => {
+    getChildren()
+      .then((kids) => {
+        setChildren(kids);
+        // If exactly one child, auto-select them
+        if (kids.length === 1) {
+          setSelectedChild(kids[0]);
+          loadProgress(kids[0].id);
+          setView("zones");
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingChildren(false));
+  }, [loadProgress]);
 
   const zoneGames = useMemo(
     () => (selectedZone ? getGamesForZone(selectedZone) : []),
@@ -595,7 +598,21 @@ export default function PlayContent() {
             )}
           </motion.div>
 
-          {children.length === 0 ? (
+          {loadingChildren ? (
+            <div className="flex flex-wrap justify-center gap-6" aria-hidden>
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="glass-card flex animate-pulse flex-col items-center gap-3 rounded-kid px-6 py-6"
+                  style={{ minWidth: 130 }}
+                >
+                  <div className="h-20 w-20 rounded-full bg-slate-200/70" />
+                  <div className="h-4 w-20 rounded-full bg-slate-200/70" />
+                  <div className="h-3 w-16 rounded-full bg-slate-200/60" />
+                </div>
+              ))}
+            </div>
+          ) : children.length === 0 ? (
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -1048,7 +1065,8 @@ export default function PlayContent() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 24, scale: 0.9 }}
               transition={{ type: "spring", stiffness: 300, damping: 22 }}
-              className="fixed bottom-5 left-1/2 z-[70] -translate-x-1/2"
+              className="fixed left-1/2 z-[70] -translate-x-1/2"
+              style={{ bottom: "calc(1.25rem + env(safe-area-inset-bottom, 0px))" }}
               role="status"
               aria-live="polite"
             >
