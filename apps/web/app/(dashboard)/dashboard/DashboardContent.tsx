@@ -11,6 +11,7 @@ import { TimerSetup } from "../../components/TimerSetup";
 import { useTimer } from "../../components/TimerProvider";
 import { playTap } from "@funberry/game-engine";
 import { AddChildModal } from "../../components/AddChildModal";
+import { OnboardingModal } from "./OnboardingModal";
 
 function ChildAvatar({ child }: { child: Child }) {
   // photo_url is stored in DB — can be a base64 data URL (selfie) or emoji (cartoon face)
@@ -407,6 +408,25 @@ function tierDisplayLabel(tier: SubscriptionTier): string {
   return "Free";
 }
 
+/** Per-user flag so the welcome tour is not shown again after skip/complete. */
+function onboardingKey(userId: string): string {
+  return `funberry_onboarding_seen_${userId}`;
+}
+function onboardingSeen(userId: string): boolean {
+  try {
+    return typeof window !== "undefined" && window.localStorage.getItem(onboardingKey(userId)) === "1";
+  } catch {
+    return false;
+  }
+}
+function markOnboardingSeen(userId: string): void {
+  try {
+    window.localStorage.setItem(onboardingKey(userId), "1");
+  } catch {
+    // Ignore storage errors (private mode, etc.).
+  }
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const { setParentPin } = useTimer();
@@ -414,7 +434,9 @@ export default function DashboardPage() {
   const [children, setChildrenState] = useState<Child[]>([]);
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [showAddChild, setShowAddChild] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [editingChild, setEditingChild] = useState<Child | null>(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [payBusy, setPayBusy] = useState<string | null>(null);
@@ -433,6 +455,7 @@ export default function DashboardPage() {
           return;
         }
         setUserEmail(user.email ?? null);
+        setUserId(user.id);
         void trySendWelcomeEmailAfterAuth();
         const p = await getParent();
         if (p) {
@@ -441,6 +464,11 @@ export default function DashboardPage() {
         }
         const kids = await getChildren();
         setChildrenState(kids);
+        // First-run: if this parent has no child yet and hasn't dismissed the tour,
+        // show the welcome walkthrough (they can skip it any time).
+        if (kids.length === 0 && !onboardingSeen(user.id)) {
+          setShowOnboarding(true);
+        }
       } catch {
         router.push("/login");
       } finally {
@@ -1102,6 +1130,26 @@ export default function DashboardPage() {
       setParentPin(newPin);
       setParent(parent ? { ...parent, pin: newPin } : null);
     }} />
+
+    {/* First-run welcome tour (only when this parent has no child yet) */}
+    <AnimatePresence>
+      {showOnboarding && children.length === 0 && (
+        <OnboardingModal
+          parentName={parent?.name?.split(" ")[0] ?? null}
+          onSkip={() => {
+            playTap();
+            if (userId) markOnboardingSeen(userId);
+            setShowOnboarding(false);
+          }}
+          onAddChild={() => {
+            playTap();
+            if (userId) markOnboardingSeen(userId);
+            setShowOnboarding(false);
+            setShowAddChild(true);
+          }}
+        />
+      )}
+    </AnimatePresence>
 
     {/* Add Child Modal */}
     {showAddChild && (
