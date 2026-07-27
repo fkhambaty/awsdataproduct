@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { getServiceClient, verifyAdminPin } from "../auth";
+import { getServiceClient, verifyAdminUser } from "../auth";
 
 export const dynamic = "force-dynamic";
 
-function guard(request: Request) {
-  if (!verifyAdminPin(request)) {
+async function guard(request: Request) {
+  if (!(await verifyAdminUser(request))) {
     return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }), admin: null };
   }
   const admin = getServiceClient();
@@ -19,7 +19,7 @@ function guard(request: Request) {
 
 /** GET /api/admin/coupons — list all coupons (newest first). */
 export async function GET(request: Request) {
-  const { error, admin } = guard(request);
+  const { error, admin } = await guard(request);
   if (error) return error;
   const { data, error: dbErr } = await admin.from("coupons").select("*").order("created_at", { ascending: false });
   if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 });
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
 
 /** POST /api/admin/coupons — create a coupon. */
 export async function POST(request: Request) {
-  const { error, admin } = guard(request);
+  const { error, admin } = await guard(request);
   if (error) return error;
 
   const body = (await request.json()) as {
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
 
 /** PATCH /api/admin/coupons — update fields (e.g. toggle active). */
 export async function PATCH(request: Request) {
-  const { error, admin } = guard(request);
+  const { error, admin } = await guard(request);
   if (error) return error;
 
   const body = (await request.json()) as {
@@ -106,7 +106,7 @@ export async function PATCH(request: Request) {
 
 /** DELETE /api/admin/coupons — remove a coupon. Body: { id }. */
 export async function DELETE(request: Request) {
-  const { error, admin } = guard(request);
+  const { error, admin } = await guard(request);
   if (error) return error;
   const body = (await request.json()) as { id?: string };
   if (!body.id) return NextResponse.json({ error: "Missing coupon id." }, { status: 400 });

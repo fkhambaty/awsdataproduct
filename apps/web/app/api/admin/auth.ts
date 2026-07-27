@@ -1,5 +1,4 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import crypto from "crypto";
 
 /** Service-role Supabase client (server only). Never expose this to the browser. */
 export function getServiceClient(): SupabaseClient | null {
@@ -9,17 +8,28 @@ export function getServiceClient(): SupabaseClient | null {
   return createClient(url, key);
 }
 
-/** Admin PIN gate. Overridable via ADMIN_PIN env; defaults to the owner's chosen PIN. */
-const ADMIN_PIN = process.env.ADMIN_PIN ?? "786110";
+/** Allowlisted admin emails (comma-separated ADMIN_EMAILS env; defaults to the owner). */
+export function getAdminEmails(): string[] {
+  const raw = process.env.ADMIN_EMAILS ?? "fk_qrf@yahoo.com";
+  return raw
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
 
-export function verifyAdminPin(request: Request): boolean {
-  const pin = request.headers.get("x-admin-pin") ?? "";
-  const a = Buffer.from(pin, "utf8");
-  const b = Buffer.from(ADMIN_PIN, "utf8");
-  if (a.length !== b.length) return false;
-  try {
-    return crypto.timingSafeEqual(a, b);
-  } catch {
-    return false;
-  }
+/**
+ * Admin auth: the caller must present a valid Supabase session (Bearer token) whose
+ * email is on the allowlist. This is real authentication — no shared PIN.
+ */
+export async function verifyAdminUser(request: Request): Promise<boolean> {
+  const admin = getServiceClient();
+  if (!admin) return false;
+  const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
+  if (!token) return false;
+  const {
+    data: { user },
+    error,
+  } = await admin.auth.getUser(token);
+  if (error || !user?.email) return false;
+  return getAdminEmails().includes(user.email.toLowerCase());
 }

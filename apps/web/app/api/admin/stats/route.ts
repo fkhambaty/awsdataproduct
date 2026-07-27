@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { getServiceClient, verifyAdminPin } from "../auth";
+import { getServiceClient, verifyAdminUser } from "../auth";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/admin/stats — high-level counts + recent sign-ups. Requires x-admin-pin. */
+/** GET /api/admin/stats — high-level counts + recent sign-ups. Requires an admin session. */
 export async function GET(request: Request) {
-  if (!verifyAdminPin(request)) {
+  if (!(await verifyAdminUser(request))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const admin = getServiceClient();

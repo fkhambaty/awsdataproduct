@@ -1150,11 +1150,47 @@ export default function DashboardPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <h3 id="upgrade-title" className="font-display text-xl font-bold text-purple-900 mb-1 text-center">
-              Choose your plan
+              Unlock Premium
             </h3>
-            <p className="text-center text-sm text-gray-600 mb-5">
-              Auto-renewing subscriptions in INR (Razorpay). Cancel anytime from your Razorpay mandate.
+            <p className="text-center text-sm text-gray-600 mb-4">
+              Have a coupon? Redeem it first. Otherwise choose a plan below.
             </p>
+
+            {/* Coupon first */}
+            <div className="mb-4 rounded-2xl border-2 border-violet-100 bg-violet-50/60 p-3">
+              <label className="text-xs font-bold text-violet-700">Coupon code</label>
+              <div className="mt-1 flex gap-2">
+                <input
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") redeemCoupon();
+                  }}
+                  placeholder="e.g. WELCOME1WEEK"
+                  className="min-w-0 flex-1 rounded-xl border-2 border-slate-200 px-3 py-2 font-mono text-sm uppercase tracking-wider outline-none focus:border-violet-400"
+                />
+                <button
+                  type="button"
+                  onClick={redeemCoupon}
+                  disabled={couponBusy || !couponCode.trim()}
+                  className="kid-glass-btn kid-glass-violet shrink-0 rounded-xl px-4 py-2 text-sm font-black disabled:opacity-50"
+                >
+                  {couponBusy ? "…" : "Apply"}
+                </button>
+              </div>
+              {couponMsg && (
+                <p className={`mt-1.5 text-xs font-bold ${couponMsg.ok ? "text-emerald-600" : "text-rose-600"}`}>
+                  {couponMsg.text}
+                </p>
+              )}
+            </div>
+
+            <div className="my-3 flex items-center gap-2 text-[11px] font-black uppercase tracking-wider text-gray-400">
+              <span className="h-px flex-1 bg-gray-200" />
+              or subscribe
+              <span className="h-px flex-1 bg-gray-200" />
+            </div>
+
             <div className="space-y-3">
               <motion.button
                 type="button"
