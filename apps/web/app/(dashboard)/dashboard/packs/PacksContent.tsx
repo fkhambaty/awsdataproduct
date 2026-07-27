@@ -13,7 +13,7 @@ import {
   type LearningPackWithMeta,
 } from "@funberry/supabase";
 import { generateLesson, type GeneratedLesson } from "@funberry/game-engine";
-import { createOcrRunner, fileToDataUrl } from "./ocr";
+import { createOcrRunner, fileToDataUrl, assessPageQuality } from "./ocr";
 
 const THEMES = [
   { id: "jungle", label: "Jungle", emoji: "🌴" },
@@ -37,8 +37,9 @@ interface WizardPage {
   dataUrl: string;
   ocrText: string;
   editedText: string;
-  status: "idle" | "running" | "done" | "error";
+  status: "idle" | "running" | "done" | "error" | "lowquality";
   progress: number;
+  quality?: { score: number; reason?: string };
 }
 
 function generatedGameCount(pack: LearningPackWithMeta): number {
@@ -333,6 +334,8 @@ function PackWizard({
   const [generated, setGenerated] = useState<GeneratedLesson | null>(null);
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const replaceInputRef = useRef<HTMLInputElement | null>(null);
+  const [replaceId, setReplaceId] = useState<string | null>(null);
   // Stable, unique prefix so this pack's game ids never collide with other packs'
   // ids in the shared progress table.
   const idPrefix = useMemo(
@@ -373,13 +376,21 @@ function PackWizard({
       for (const page of targets) {
         setPages((prev) => prev.map((p) => (p.id === page.id ? { ...p, status: "running", progress: 0 } : p)));
         try {
-          const text = await runner.run(page.dataUrl, (prog) =>
+          const result = await runner.run(page.dataUrl, (prog) =>
             setPages((prev) => prev.map((p) => (p.id === page.id ? { ...p, progress: prog } : p))),
           );
+          const quality = assessPageQuality(result);
           setPages((prev) =>
             prev.map((p) =>
               p.id === page.id
-                ? { ...p, ocrText: text, editedText: p.editedText || text, status: "done", progress: 1 }
+                ? {
+                    ...p,
+                    ocrText: result.text,
+                    editedText: p.editedText || result.text,
+                    status: quality.ok ? "done" : "lowquality",
+                    quality: { score: quality.score, reason: quality.reason },
+                    progress: 1,
+                  }
                 : p,
             ),
           );
@@ -394,6 +405,31 @@ function PackWizard({
       setOcrBusy(false);
     }
   }, [pages]);
+
+  const requestReplace = useCallback((id: string) => {
+    setReplaceId(id);
+    replaceInputRef.current?.click();
+  }, []);
+
+  const handleReplaceFile = useCallback(
+    async (files: FileList | null) => {
+      const file = files?.[0];
+      if (!file || !replaceId || !file.type.startsWith("image/")) {
+        setReplaceId(null);
+        return;
+      }
+      const dataUrl = await fileToDataUrl(file);
+      setPages((prev) =>
+        prev.map((p) =>
+          p.id === replaceId
+            ? { ...p, dataUrl, ocrText: "", editedText: "", status: "idle", progress: 0, quality: undefined }
+            : p,
+        ),
+      );
+      setReplaceId(null);
+    },
+    [replaceId],
+  );
 
   const doGenerate = useCallback(() => {
     const result = generateLesson(combinedText, {
@@ -451,9 +487,10 @@ function PackWizard({
       {/* Step 1: Upload */}
       {step === 1 && (
         <div>
-          <h2 className="font-display text-xl font-black text-slate-800">1. Add textbook pages</h2>
+          <h2 className="font-display text-xl font-black text-slate-800">1. Add printed textbook pages</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Take clear, well-lit photos of the pages (straight, not blurry). Add as many as you like.
+            Photograph clear, printed pages in good light — hold the camera flat and let the page fill the
+            frame. Blurry or dim photos will be flagged so you can retake them.
           </p>
           <input
             ref={fileInputRef}
@@ -508,8 +545,8 @@ function PackWizard({
         <div>
           <h2 className="font-display text-xl font-black text-slate-800">2. Read &amp; fix the text</h2>
           <p className="mt-1 text-sm text-slate-500">
-            We read the words from your photos here in your browser. Check each page and fix any mistakes —
-            the games are built from this text.
+            We read the printed words from your photos here in your browser. Pages that are too blurry to read
+            are flagged — replace those with a clearer photo. Then check the text and fix any small mistakes.
           </p>
 
           <button
@@ -520,9 +557,22 @@ function PackWizard({
             {ocrBusy ? "Reading pages…" : anyDone ? "Read remaining pages" : "✨ Read text from photos"}
           </button>
 
+          <input
+            ref={replaceInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => handleReplaceFile(e.target.files)}
+          />
+
           <div className="mt-4 space-y-4">
             {pages.map((p, i) => (
-              <div key={p.id} className="rounded-2xl border border-slate-200 bg-white/70 p-3">
+              <div
+                key={p.id}
+                className={`rounded-2xl border bg-white/70 p-3 ${
+                  p.status === "lowquality" ? "border-rose-300" : "border-slate-200"
+                }`}
+              >
                 <div className="mb-2 flex items-center gap-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={p.dataUrl} alt="" className="h-14 w-14 rounded-lg border object-cover" />
@@ -530,18 +580,38 @@ function PackWizard({
                     <p className="text-xs font-black text-slate-600">Page {i + 1}</p>
                     <p className="text-[11px] font-bold text-slate-400">
                       {p.status === "running" && `Reading… ${Math.round(p.progress * 100)}%`}
-                      {p.status === "done" && "Read ✓ — edit if needed"}
-                      {p.status === "error" && "Couldn't read — type the text or retry"}
+                      {p.status === "done" && `Clear ✓ (${p.quality?.score ?? 0}% clarity) — edit if needed`}
+                      {p.status === "lowquality" && `Too unclear (${p.quality?.score ?? 0}% clarity)`}
+                      {p.status === "error" && "Couldn't read — retake and replace"}
                       {p.status === "idle" && "Not read yet"}
                     </p>
                   </div>
+                  <button
+                    onClick={() => requestReplace(p.id)}
+                    className="kid-glass-btn kid-glass-sky shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-bold"
+                  >
+                    Replace
+                  </button>
+                  <button
+                    onClick={() => setPages((prev) => prev.filter((x) => x.id !== p.id))}
+                    className="kid-glass-btn kid-glass-muted shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-bold"
+                  >
+                    Remove
+                  </button>
                 </div>
+
+                {(p.status === "lowquality" || p.status === "error") && (
+                  <div className="mb-2 rounded-xl border border-rose-200 bg-rose-50 p-2.5 text-[12px] font-semibold text-rose-700">
+                    ⚠️ {p.quality?.reason ?? "This page isn't clear enough."} Please upload a clearer photo of this printed page.
+                  </div>
+                )}
+
                 <textarea
                   value={p.editedText}
                   onChange={(e) =>
                     setPages((prev) => prev.map((x) => (x.id === p.id ? { ...x, editedText: e.target.value } : x)))
                   }
-                  placeholder="Text from this page will appear here…"
+                  placeholder="Text from this printed page will appear here…"
                   rows={4}
                   className="w-full rounded-xl border border-slate-200 bg-white p-2 text-sm text-slate-700 outline-none focus:border-violet-400"
                 />
@@ -549,12 +619,27 @@ function PackWizard({
             ))}
           </div>
 
-          <div className="mt-6 flex justify-between">
+          {pages.some((p) => p.status === "lowquality" || p.status === "error") && (
+            <p className="mt-4 rounded-xl bg-rose-50 p-2.5 text-center text-xs font-bold text-rose-600">
+              Replace the flagged pages with clearer photos before continuing.
+            </p>
+          )}
+          {pages.some((p) => p.status === "idle") && !pages.some((p) => p.status === "lowquality") && (
+            <p className="mt-4 rounded-xl bg-sky-50 p-2.5 text-center text-xs font-bold text-sky-600">
+              Tap &ldquo;Read text from photos&rdquo; above to continue.
+            </p>
+          )}
+
+          <div className="mt-4 flex justify-between">
             <button onClick={() => setStep(1)} className="kid-glass-btn kid-glass-muted rounded-2xl px-5 py-2.5 text-sm font-bold">
               ← Back
             </button>
             <button
-              disabled={combinedText.trim().length < 20}
+              disabled={
+                pages.length === 0 ||
+                !pages.every((p) => p.status === "done") ||
+                combinedText.trim().length < 20
+              }
               onClick={() => setStep(3)}
               className="kid-glass-btn kid-glass-violet rounded-2xl px-6 py-2.5 text-sm font-black disabled:opacity-40"
             >

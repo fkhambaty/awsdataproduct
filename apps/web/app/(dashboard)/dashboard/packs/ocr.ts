@@ -2,9 +2,45 @@
 
 import type { Worker } from "tesseract.js";
 
+export interface OcrResult {
+  text: string;
+  /** Mean OCR confidence (0-100). Higher = clearer, printed text. */
+  confidence: number;
+  /** Count of readable alphabetic words (>= 3 letters). */
+  wordCount: number;
+}
+
 export interface OcrRunner {
-  run: (image: string, onProgress?: (p: number) => void) => Promise<string>;
+  run: (image: string, onProgress?: (p: number) => void) => Promise<OcrResult>;
   terminate: () => Promise<void>;
+}
+
+/**
+ * Clarity benchmark for a printed textbook page. If a photo is blurry, dim, or
+ * too low-resolution, the extracted text and confidence drop below these bars and
+ * we ask the parent to re-upload a clearer photo.
+ */
+export function assessPageQuality(result: OcrResult): { ok: boolean; score: number; reason?: string } {
+  const score = Math.round(result.confidence);
+  if (result.text.trim().length < 40 || result.wordCount < 10) {
+    return {
+      ok: false,
+      score,
+      reason: "We couldn't read enough text. Move closer so the page fills the frame, then retake.",
+    };
+  }
+  if (result.confidence < 65) {
+    return {
+      ok: false,
+      score,
+      reason: "This photo looks blurry or dim. Retake it in good light, holding the camera flat and steady.",
+    };
+  }
+  return { ok: true, score };
+}
+
+function countReadableWords(text: string): number {
+  return (text.match(/[A-Za-z]{3,}/g) ?? []).length;
 }
 
 /**
@@ -27,11 +63,16 @@ export async function createOcrRunner(): Promise<OcrRunner> {
   });
 
   return {
-    async run(image: string, onProgress?: (p: number) => void): Promise<string> {
+    async run(image: string, onProgress?: (p: number) => void): Promise<OcrResult> {
       progressCb = onProgress;
       const { data } = await worker.recognize(image);
       progressCb = undefined;
-      return (data.text ?? "").trim();
+      const text = (data.text ?? "").trim();
+      return {
+        text,
+        confidence: typeof data.confidence === "number" ? data.confidence : 0,
+        wordCount: countReadableWords(text),
+      };
     },
     async terminate(): Promise<void> {
       await worker.terminate();
