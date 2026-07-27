@@ -1,0 +1,55 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="FunBerryKids">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f0f9ff" />
+      <stop offset="100%" stop-color="#fdf4ff" />
+    </linearGradient>
+    <linearGradient id="cape" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7c3aed" />
+      <stop offset="100%" stop-color="#4c1d95" />
+    </linearGradient>
+    <linearGradient id="berry" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0%" stop-color="#ff7aa2" />
+      <stop offset="45%" stop-color="#ff2d6a" />
+      <stop offset="100%" stop-color="#d40e50" />
+    </linearGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5ee98a" />
+      <stop offset="100%" stop-color="#12a150" />
+    </linearGradient>
+    <linearGradient id="mask" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e293b" />
+      <stop offset="100%" stop-color="#312e81" />
+    </linearGradient>
+    <radialGradient id="star" cx="0.5" cy="0.4" r="0.7">
+      <stop offset="0%" stop-color="#fff6cf" />
+      <stop offset="55%" stop-color="#ffd93d" />
+      <stop offset="100%" stop-color="#f6a609" />
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="256" height="256" rx="56" fill="url(#bg)" />
+
+  <g transform="translate(20 18) scale(0.92)">
+    <path d="M40 96 C 2 120 2 196 34 228 C 40 190 66 168 92 160 C 66 150 46 126 40 96 Z" fill="url(#cape)" />
+    <path d="M180 96 C 218 120 218 196 186 228 C 180 190 154 168 128 160 C 154 150 174 126 180 96 Z" fill="url(#cape)" />
+    <path d="M62 84 L 82 54 L 100 78 L 118 52 L 138 84 C 122 96 78 96 62 84 Z" fill="url(#leaf)" />
+    <rect x="95" y="46" width="10" height="18" rx="5" fill="#0f7a3d" />
+    <path d="M46 92 C 46 66 154 66 154 92 C 154 140 120 206 100 206 C 80 206 46 140 46 92 Z" fill="url(#berry)" />
+    <ellipse cx="72" cy="110" rx="3.4" ry="5.2" fill="#ffe27a" transform="rotate(-18 72 110)" />
+    <ellipse cx="100" cy="104" rx="3.4" ry="5.2" fill="#ffe27a" transform="rotate(18 100 104)" />
+    <ellipse cx="128" cy="110" rx="3.4" ry="5.2" fill="#ffe27a" transform="rotate(-18 128 110)" />
+    <ellipse cx="84" cy="132" rx="3.4" ry="5.2" fill="#ffe27a" transform="rotate(18 84 132)" />
+    <ellipse cx="116" cy="132" rx="3.4" ry="5.2" fill="#ffe27a" transform="rotate(-18 116 132)" />
+    <ellipse cx="100" cy="150" rx="3.4" ry="5.2" fill="#ffe27a" transform="rotate(18 100 150)" />
+    <path d="M56 108 C 70 98 130 98 144 108 C 150 118 148 130 140 136 C 128 132 120 128 100 128 C 80 128 72 132 60 136 C 52 130 50 118 56 108 Z" fill="url(#mask)" />
+    <ellipse cx="82" cy="118" rx="9" ry="10" fill="#ffffff" />
+    <ellipse cx="118" cy="118" rx="9" ry="10" fill="#ffffff" />
+    <circle cx="84" cy="119" r="4.4" fill="#1e293b" />
+    <circle cx="120" cy="119" r="4.4" fill="#1e293b" />
+    <circle cx="70" cy="150" r="6" fill="#ff86ad" opacity="0.7" />
+    <circle cx="130" cy="150" r="6" fill="#ff86ad" opacity="0.7" />
+    <path d="M84 150 Q 100 164 116 150" fill="none" stroke="#7a0d33" stroke-width="4.5" stroke-linecap="round" />
+    <path d="M100 168 l 6.5 13.2 14.6 2.1 -10.5 10.3 2.5 14.5 -13.1 -6.9 -13.1 6.9 2.5 -14.5 -10.5 -10.3 14.6 -2.1 Z" fill="url(#star)" stroke="#f59e0b" stroke-width="1.5" />
+  </g>
+</svg>

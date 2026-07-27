@@ -2,7 +2,6 @@
 
 import { brand, pricing } from "@funberry/config";
 import { motion, useReducedMotion } from "framer-motion";
-import Image from "next/image";
 import { FunBerryLogo } from "./components/FunBerryLogo";
 
 const fadeUp = {
@@ -84,14 +83,7 @@ export default function HomeContent() {
             className="mb-5 flex justify-center"
           >
             <div className="flex items-center justify-center rounded-[32px] border border-white/80 bg-white/55 p-4 shadow-[0_16px_40px_rgba(99,102,241,0.2)] backdrop-blur-xl sm:p-6">
-              <Image
-                src="/funberrykids-logo.png"
-                alt="FunBerryKids"
-                width={520}
-                height={320}
-                priority
-                className="h-auto w-[280px] sm:w-[400px] md:w-[520px]"
-              />
+              <FunBerryLogo size="hero" variant="editorial" animate priority responsive className="w-[280px] sm:w-[400px] md:w-[520px]" />
             </div>
           </motion.div>
 
