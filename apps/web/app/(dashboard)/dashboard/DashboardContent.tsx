@@ -440,6 +440,9 @@ export default function DashboardPage() {
   const [editingChild, setEditingChild] = useState<Child | null>(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [payBusy, setPayBusy] = useState<string | null>(null);
+  const [couponCode, setCouponCode] = useState("");
+  const [couponBusy, setCouponBusy] = useState(false);
+  const [couponMsg, setCouponMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [familyStats, setFamilyStats] = useState<{
     totalSessions: number;
     uniqueGamesTouched: number;
@@ -500,6 +503,43 @@ export default function DashboardPage() {
     playTap();
     await signOut();
     router.push("/");
+  }
+
+  async function redeemCoupon() {
+    const code = couponCode.trim();
+    if (!code) return;
+    setCouponBusy(true);
+    setCouponMsg(null);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setCouponMsg({ text: "Please sign in again.", ok: false });
+        return;
+      }
+      const res = await fetch("/api/coupons/redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ code }),
+      });
+      const json = (await res.json()) as { error?: string; freeDays?: number };
+      if (!res.ok) {
+        setCouponMsg({ text: json.error ?? "Could not redeem this code.", ok: false });
+      } else {
+        setCouponMsg({ text: `Success! ${json.freeDays ?? 0} days of Premium unlocked. 🎉`, ok: true });
+        setCouponCode("");
+        const p = await getParent();
+        if (p) {
+          setParent(p);
+          if (p.pin) setParentPin(p.pin);
+        }
+      }
+    } catch {
+      setCouponMsg({ text: "Something went wrong. Try again.", ok: false });
+    } finally {
+      setCouponBusy(false);
+    }
   }
 
   if (loading) {
@@ -965,6 +1005,51 @@ export default function DashboardPage() {
               Open
             </span>
           </motion.a>
+        </motion.section>
+
+        {/* Coupon redemption */}
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.38 }}
+          className="mb-6"
+        >
+          <div className="glass-card rounded-kid p-4 sm:p-5">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl" aria-hidden>🎟️</span>
+              <h3 className="font-display text-base font-black text-slate-800 sm:text-lg">Have a coupon?</h3>
+            </div>
+            <p className="mt-1 text-xs font-semibold text-slate-500 sm:text-sm">
+              Redeem a code to unlock free Premium access.
+            </p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input
+                value={couponCode}
+                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") redeemCoupon();
+                }}
+                placeholder="Enter coupon code"
+                className="flex-1 rounded-2xl border-2 border-slate-200 px-4 py-3 font-mono text-lg tracking-wider outline-none transition focus:border-violet-400"
+              />
+              <motion.button
+                whileHover={!couponBusy ? { scale: 1.03 } : {}}
+                whileTap={!couponBusy ? { scale: 0.97 } : {}}
+                onClick={redeemCoupon}
+                disabled={couponBusy || !couponCode.trim()}
+                className="kid-glass-btn kid-glass-violet rounded-2xl px-6 py-3 text-sm font-black disabled:opacity-50"
+              >
+                {couponBusy ? "Redeeming…" : "Redeem"}
+              </motion.button>
+            </div>
+            {couponMsg && (
+              <p
+                className={`mt-2 text-sm font-bold ${couponMsg.ok ? "text-emerald-600" : "text-rose-600"}`}
+              >
+                {couponMsg.text}
+              </p>
+            )}
+          </div>
         </motion.section>
 
         {/* Grown-up Headquarters — growth & smarts report */}

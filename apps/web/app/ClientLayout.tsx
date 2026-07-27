@@ -61,7 +61,8 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
     pathname?.startsWith("/play") ||
     pathname?.startsWith("/login") ||
     pathname?.startsWith("/signup") ||
-    pathname?.startsWith("/auth");
+    pathname?.startsWith("/auth") ||
+    pathname?.startsWith("/admin");
   const homeHref = isParentSurface ? "/dashboard" : "/play";
 
   return (

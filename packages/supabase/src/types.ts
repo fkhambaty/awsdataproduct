@@ -225,6 +225,43 @@ export interface Database {
         };
         Update: Partial<Database["public"]["Tables"]["pack_assignments"]["Insert"]>;
       };
+      coupons: {
+        Row: {
+          id: string;
+          code: string;
+          discount_percent: number;
+          free_days: number;
+          active: boolean;
+          expires_at: string | null;
+          max_redemptions: number | null;
+          redeemed_count: number;
+          note: string | null;
+          created_at: string;
+        };
+        Insert: {
+          code: string;
+          discount_percent?: number;
+          free_days?: number;
+          active?: boolean;
+          expires_at?: string | null;
+          max_redemptions?: number | null;
+          note?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["coupons"]["Insert"] & { redeemed_count: number }>;
+      };
+      coupon_redemptions: {
+        Row: {
+          id: string;
+          coupon_id: string;
+          parent_id: string;
+          redeemed_at: string;
+        };
+        Insert: {
+          coupon_id: string;
+          parent_id: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["coupon_redemptions"]["Insert"]>;
+      };
       coaching_skill_axes: {
         Row: {
           id: string;
