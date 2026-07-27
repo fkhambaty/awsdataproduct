@@ -25,12 +25,12 @@ import {
   RankProvider,
 } from "@funberry/game-engine";
 import type { GameConfig, GameResult } from "@funberry/game-engine";
-import { getChildren, getChildBestProgress, saveProgress, verifyParentPin, getChildRank } from "@funberry/supabase";
-import type { Child } from "@funberry/supabase";
+import { getChildren, getChildBestProgress, saveProgress, verifyParentPin, getChildRank, getAssignedPacksForChild } from "@funberry/supabase";
+import type { Child, LearningPack } from "@funberry/supabase";
 import { LeaderboardModal } from "../../components/Leaderboard";
 import { FunBerryLogo } from "../../components/FunBerryLogo";
 
-type ViewMode = "who" | "zones" | "games" | "playing";
+type ViewMode = "who" | "zones" | "games" | "packGames" | "playing";
 
 /** Kid-facing copy: web records each completed round to Supabase for stars + parent coaching reports. */
 const KID_SAVED_PROGRESS_WHO =
@@ -342,6 +342,9 @@ export default function PlayContent() {
   const [selectedChild, setSelectedChild] = useState<Child | null>(null);
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
   const [selectedGame, setSelectedGame] = useState<GameConfig | null>(null);
+  const [assignedPacks, setAssignedPacks] = useState<LearningPack[]>([]);
+  const [selectedPack, setSelectedPack] = useState<LearningPack | null>(null);
+  const [playingFromPack, setPlayingFromPack] = useState(false);
   const [completedGames, setCompletedGames] = useState<Record<string, number>>({});
   const [loadingProgress, setLoadingProgress] = useState(false);
   const [showParentGate, setShowParentGate] = useState(false);
@@ -367,6 +370,22 @@ export default function PlayContent() {
     }
   }, []);
 
+  // Load parent-assigned Learning Packs for the selected child.
+  const loadPacks = useCallback(async (childId: string) => {
+    try {
+      const packs = await getAssignedPacksForChild(childId);
+      setAssignedPacks(packs);
+    } catch {
+      setAssignedPacks([]);
+    }
+  }, []);
+
+  const packGames = useMemo<GameConfig[]>(() => {
+    if (!selectedPack) return [];
+    const g = (selectedPack.generated as { games?: GameConfig[] } | null)?.games;
+    return Array.isArray(g) ? g : [];
+  }, [selectedPack]);
+
   // Load children on mount
   useEffect(() => {
     getChildren()
@@ -376,12 +395,13 @@ export default function PlayContent() {
         if (kids.length === 1) {
           setSelectedChild(kids[0]);
           loadProgress(kids[0].id);
+          loadPacks(kids[0].id);
           setView("zones");
         }
       })
       .catch(() => {})
       .finally(() => setLoadingChildren(false));
-  }, [loadProgress]);
+  }, [loadProgress, loadPacks]);
 
   const zoneGames = useMemo(
     () => (selectedZone ? getGamesForZone(selectedZone) : []),
@@ -397,6 +417,7 @@ export default function PlayContent() {
     playTap();
     setSelectedChild(child);
     loadProgress(child.id);
+    loadPacks(child.id);
     setView("zones");
   }
 
@@ -423,6 +444,22 @@ export default function PlayContent() {
     playTap();
     reportedKeyRef.current = null;
     setSaveState("idle");
+    setPlayingFromPack(false);
+    setSelectedGame(game);
+    setView("playing");
+  }
+
+  function handlePackClick(pack: LearningPack) {
+    playTap();
+    setSelectedPack(pack);
+    setView("packGames");
+  }
+
+  function handlePackGameClick(game: GameConfig) {
+    playTap();
+    reportedKeyRef.current = null;
+    setSaveState("idle");
+    setPlayingFromPack(true);
     setSelectedGame(game);
     setView("playing");
   }
@@ -474,7 +511,7 @@ export default function PlayContent() {
 
   function handleNextGame() {
     playTap();
-    setView("games");
+    setView(playingFromPack ? "packGames" : "games");
     setSelectedGame(null);
   }
 
@@ -740,6 +777,47 @@ export default function PlayContent() {
               Pick your world below and jump straight into play
             </p>
           </motion.section>
+
+          {assignedPacks.length > 0 && (
+            <section className="mb-5">
+              <h2 className="mb-3 text-center font-display text-xl font-black text-white [text-shadow:0_2px_0_rgba(55,65,81,0.35)] sm:text-2xl">
+                My Lessons 📚
+              </h2>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {assignedPacks.map((pack, i) => {
+                  const games = (pack.generated as { games?: GameConfig[] } | null)?.games ?? [];
+                  const packEmoji =
+                    pack.theme === "space" ? "🚀"
+                    : pack.theme === "ocean" ? "🌊"
+                    : pack.theme === "candy" ? "🍭"
+                    : pack.theme === "dino" ? "🦕"
+                    : "🌴";
+                  return (
+                    <motion.button
+                      key={pack.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      whileHover={{ y: -4, scale: 1.02 }}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => handlePackClick(pack)}
+                      className="kid-glass-panel flex items-center gap-3 rounded-[22px] p-4 text-left"
+                      style={{ background: "linear-gradient(135deg, #ffffff, #eef2ff)", border: "3px solid rgba(255,255,255,0.8)" }}
+                    >
+                      <span className="text-4xl" aria-hidden>{packEmoji}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-display text-sm font-black text-indigo-900">{pack.title}</p>
+                        <p className="text-[11px] font-bold text-indigo-500">
+                          {pack.subject} • {games.length} game{games.length === 1 ? "" : "s"}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-indigo-500 px-3 py-1 text-[11px] font-black text-white">PLAY</span>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           <section className="mb-4">
             <h2 className="mb-3 text-center font-display text-xl font-black text-white [text-shadow:0_2px_0_rgba(55,65,81,0.35)] sm:text-2xl">
@@ -1013,6 +1091,94 @@ export default function PlayContent() {
     );
   }
 
+  /* ── Learning Pack: game list ── */
+  if (view === "packGames" && selectedPack) {
+    const packEmoji =
+      selectedPack.theme === "space" ? "🚀"
+      : selectedPack.theme === "ocean" ? "🌊"
+      : selectedPack.theme === "candy" ? "🍭"
+      : selectedPack.theme === "dino" ? "🦕"
+      : "🌴";
+    return (
+      <main className="min-h-screen bg-[radial-gradient(circle_at_20%_10%,#6366f1_0%,#8b5cf6_40%,#06b6d4_100%)] px-4 py-4 sm:px-5 sm:py-5">
+        <div className="mx-auto max-w-2xl">
+          <div className="mb-3 flex items-center gap-2">
+            <motion.button
+              type="button"
+              onClick={goHome}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="kid-glass-btn kid-glass-berry rounded-xl px-3 py-2 text-xs font-bold sm:text-sm"
+            >
+              🏠 Home
+            </motion.button>
+            <motion.button
+              type="button"
+              onClick={() => { playTap(); setSelectedPack(null); setView("zones"); }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="kid-glass-btn kid-glass-muted rounded-xl px-3 py-2 text-xs font-bold sm:text-sm"
+            >
+              📚 My Lessons
+            </motion.button>
+          </div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="glass-card mb-5 rounded-kid p-4 text-center sm:p-6"
+          >
+            <div className="text-5xl sm:text-6xl">{packEmoji}</div>
+            <h2 className="mt-1 font-display text-2xl font-black text-indigo-900 sm:text-3xl">{selectedPack.title}</h2>
+            <p className="mt-1 text-xs font-bold text-indigo-500 sm:text-sm">
+              From your book • {selectedPack.subject}
+            </p>
+            <p className="mx-auto mt-2 max-w-md text-center text-[10px] font-semibold leading-snug text-slate-500 sm:text-xs">
+              {KID_SAVED_PROGRESS_GAMES}
+            </p>
+          </motion.div>
+
+          {packGames.length === 0 ? (
+            <div className="glass-card rounded-kid p-8 text-center">
+              <p className="mb-2 text-4xl">🚧</p>
+              <p className="font-bold text-slate-600">This lesson has no games yet.</p>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {packGames.map((game, i) => {
+                const stars = completedGames[game.id] ?? 0;
+                return (
+                  <motion.button
+                    key={game.id}
+                    initial={{ opacity: 0, x: 30 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.05, type: "spring", stiffness: 200, damping: 18 }}
+                    whileHover={{ scale: 1.02, x: 4 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => handlePackGameClick(game)}
+                    className="kid-glass-panel flex w-full items-center gap-4 rounded-kid bg-white p-4 text-left"
+                    style={{ borderLeft: "4px solid #6366f1" }}
+                  >
+                    <span className="text-3xl">{GAME_ICONS[game.type] ?? "🎮"}</span>
+                    <div className="flex-1">
+                      <p className="font-display font-bold text-gray-800">{game.title}</p>
+                      <p className="mt-0.5 text-xs text-gray-400">{GAME_LABELS[game.type]}</p>
+                    </div>
+                    <div className="flex gap-0.5">
+                      {[1, 2, 3].map((s) => (
+                        <span key={s} className={`text-base ${s <= stars ? "" : "grayscale opacity-25"}`}>⭐</span>
+                      ))}
+                    </div>
+                  </motion.button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </main>
+    );
+  }
+
   /* ── Playing a Game ── */
   return (
     <RankProvider rankInfo={childRank}>
@@ -1023,7 +1189,7 @@ export default function PlayContent() {
         lifetimeStars={selectedChild ? (selectedChild.total_stars ?? 0) : undefined}
         progressSavesHint={KID_SAVED_PROGRESS_INGAME}
         bookPageSrc={selectedGame?.bookPageSrc}
-        onClose={() => { playTap(); setView("zones"); setSelectedGame(null); }}
+        onClose={() => { playTap(); setView(playingFromPack ? "packGames" : "zones"); setSelectedGame(null); }}
         onNextGame={handleNextGame}
       >
         <AnimatePresence mode="wait">

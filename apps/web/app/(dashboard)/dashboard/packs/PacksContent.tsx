@@ -333,6 +333,12 @@ function PackWizard({
   const [generated, setGenerated] = useState<GeneratedLesson | null>(null);
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // Stable, unique prefix so this pack's game ids never collide with other packs'
+  // ids in the shared progress table.
+  const idPrefix = useMemo(
+    () => `pack-${(globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)).slice(0, 8)}`,
+    [],
+  );
 
   const combinedText = useMemo(
     () => pages.map((p) => p.editedText).filter((t) => t.trim()).join("\n"),
@@ -391,13 +397,13 @@ function PackWizard({
 
   const doGenerate = useCallback(() => {
     const result = generateLesson(combinedText, {
-      idPrefix: "preview",
+      idPrefix,
       title: title || "My Lesson",
       subject,
       theme,
     });
     setGenerated(result);
-  }, [combinedText, title, subject, theme]);
+  }, [combinedText, title, subject, theme, idPrefix]);
 
   const toggleChild = (id: string) =>
     setSelected((prev) => {
