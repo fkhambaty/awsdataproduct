@@ -129,6 +129,45 @@ function stripEnd(s: string): string {
   return s.replace(/[.!?]+\s*$/, "").trim();
 }
 
+function hasVowel(w: string): boolean {
+  return /[aeiou]/i.test(w);
+}
+
+/** Verb/aux words that signal a real statement (vs. a heading or badge). */
+const VERB_HINTS = new Set([
+  "is", "are", "was", "were", "be", "being", "been", "has", "have", "had",
+  "use", "uses", "used", "form", "forms", "formed", "make", "makes", "made",
+  "called", "call", "include", "includes", "need", "needs", "grow", "grows",
+  "live", "lives", "help", "helps", "can", "will", "do", "does", "get", "gets",
+  "give", "gives", "come", "comes", "means", "mean", "learn", "learns", "see",
+  "eat", "eats", "drink", "drinks", "breathe", "move", "moves", "become",
+  "becomes", "found", "find", "finds", "contain", "contains", "show", "shows",
+  "keep", "keeps", "help", "protect", "protects", "carry", "carries",
+]);
+
+/** OCR garbage token: bracket/symbol soup, or a 3+ letter run with no vowel. */
+function isJunkToken(t: string): boolean {
+  if (/[[\]{}|©®~^_<>*=]/.test(t)) return true;
+  const letters = t.replace(/[^A-Za-z]/g, "");
+  if (letters.length >= 3 && !hasVowel(letters)) return true;
+  return false;
+}
+
+/**
+ * A sentence usable for questions: no OCR-junk tokens, contains a verb-ish word,
+ * and has several real content words. This blocks headers, badges, captions, and
+ * garbled lines from ever becoming a game question.
+ */
+function isFactSentence(s: string): boolean {
+  const tokens = s.split(/\s+/).filter(Boolean);
+  if (tokens.length < 4 || tokens.length > 26) return false;
+  if (tokens.some(isJunkToken)) return false;
+  const clean = tokens.map(cleanWord).filter(Boolean);
+  if (!clean.some((w) => VERB_HINTS.has(w))) return false;
+  const contentWords = clean.filter((w) => w.length >= 3 && hasVowel(w));
+  return contentWords.length >= 3;
+}
+
 export function splitSentences(text: string): string[] {
   const byLine = text.split(/\n+/);
   const out: string[] = [];
@@ -153,7 +192,7 @@ function scoreKeywords(sentences: string[]): string[] {
   for (const s of sentences) {
     for (const raw of s.split(/\s+/)) {
       const w = cleanWord(raw);
-      if (w.length < 3 || STOPWORDS.has(w)) continue;
+      if (w.length < 3 || STOPWORDS.has(w) || !hasVowel(w)) continue;
       counts.set(w, (counts.get(w) ?? 0) + 1);
     }
   }
@@ -215,19 +254,23 @@ function makeClozeQuiz(sentences: string[], keywords: string[], opts: GenerateOp
     const words = s.split(/\s+/);
     let answerIdx = -1;
     for (let i = 0; i < words.length; i += 1) {
-      const w = cleanWord(words[i]);
-      if (w.length >= 3 && pool.includes(w) && !usedAnswers.has(w)) {
+      // Only blank a clean, whole word (skip "3-digit", "456.", punctuation, etc.).
+      const bare = words[i].replace(/[.,!?;:]+$/, "");
+      if (!/^[A-Za-z]+$/.test(bare)) continue;
+      const w = cleanWord(bare);
+      if (w.length >= 4 && hasVowel(w) && !STOPWORDS.has(w) && pool.includes(w) && !usedAnswers.has(w)) {
         answerIdx = i;
         break;
       }
     }
     if (answerIdx < 0) continue;
-    const answer = cleanWord(words[answerIdx]);
-    const sentenceWords = new Set(words.map(cleanWord));
+    const answer = cleanWord(words[answerIdx].replace(/[.,!?;:]+$/, ""));
+    const sentenceWords = new Set(words.map((x) => cleanWord(x)));
     const distractors = pool.filter(
-      (k) => !isVariant(k, answer) && !sentenceWords.has(k),
+      (k) => k.length >= 3 && hasVowel(k) && !isVariant(k, answer) && !sentenceWords.has(k),
     );
-    if (distractors.length < 2) continue;
+    // Need a full set of real, distinct options — otherwise skip (no junk questions).
+    if (distractors.length < 3) continue;
     usedAnswers.add(answer);
 
     const chosen = shuffle(distractors).slice(0, 3);
@@ -426,26 +469,18 @@ function makeDragSort(keywords: string[], opts: GenerateOptions): GameConfig | n
 }
 
 function makeSequence(text: string, keywords: string[], opts: GenerateOptions): GameConfig | null {
-  // 1) Numbered steps: "1. ... 2. ... 3. ..."
-  const numbered = [...text.matchAll(/(?:^|\n|\s)(\d)[.)]\s+([^\n.]{4,60})/g)]
-    .map((m) => ({ n: Number(m[1]), label: m[2].trim() }))
-    .filter((x) => x.n >= 1 && x.n <= 8)
-    .sort((a, b) => a.n - b.n);
+  // Only build an ordering game when the text describes a REAL process, signalled by
+  // ordinal cue words. A plain numbered list of facts is NOT a sequence (its order is
+  // arbitrary), so we deliberately do not treat "1. 2. 3." as steps.
+  const cueRegex = /\b(first|then|next|after that|afterwards|finally|lastly|step\s+\d)\b/i;
+  if (!cueRegex.test(text)) return null;
 
-  let steps: string[] = [];
-  if (numbered.length >= 3) {
-    steps = uniq(numbered.map((x) => x.label)).slice(0, 6);
-  } else {
-    // 2) Cue words: first / then / next / after that / finally
-    const cueRegex = /\b(first|then|next|after that|afterwards|finally|lastly)\b/gi;
-    if (cueRegex.test(text)) {
-      const chunks = text
-        .split(/\b(?:first|then|next|after that|afterwards|finally|lastly)\b/i)
-        .map((c) => c.replace(/^[,:;\s]+/, "").split(/[.\n]/)[0].trim())
-        .filter((c) => c.length >= 4 && c.length <= 60);
-      steps = uniq(chunks).slice(0, 6);
-    }
-  }
+  const chunks = text
+    .split(/\b(?:first(?:ly)?|then|next|after that|afterwards|finally|lastly)\b/i)
+    .map((c) => c.replace(/^[,:;\s]+/, "").split(/[.\n]/)[0].trim())
+    // Keep short, clean step phrases only.
+    .filter((c) => c.length >= 4 && c.length <= 44 && !c.split(/\s+/).some(isJunkToken));
+  const steps = uniq(chunks).slice(0, 6);
 
   if (steps.length < 3) return null;
   const stepConfigs: SequenceStep[] = steps.map((label, i) => ({
@@ -479,7 +514,9 @@ function makeSequence(text: string, keywords: string[], opts: GenerateOptions): 
  */
 export function generateLesson(rawText: string, opts: GenerateOptions): GeneratedLesson {
   const text = normalize(cleanLessonText(rawText));
-  const sentences = splitSentences(text);
+  // Only real, verb-bearing statements become questions — headers, badges, captions
+  // and garbled OCR lines are excluded so nothing "stupid" reaches the child.
+  const sentences = splitSentences(text).filter(isFactSentence);
   const keywords = scoreKeywords(sentences);
   const warnings: string[] = [];
 
