@@ -12,7 +12,7 @@ import {
   type Child,
   type LearningPackWithMeta,
 } from "@funberry/supabase";
-import { generateLesson, type GeneratedLesson } from "@funberry/game-engine";
+import { generateLesson, cleanLessonText, type GeneratedLesson } from "@funberry/game-engine";
 import { createOcrRunner, fileToDataUrl, assessPageQuality } from "./ocr";
 
 const THEMES = [
@@ -380,13 +380,15 @@ function PackWizard({
             setPages((prev) => prev.map((p) => (p.id === page.id ? { ...p, progress: prog } : p))),
           );
           const quality = assessPageQuality(result);
+          // Show the parent auto-cleaned text (clutter/margin noise removed) to edit.
+          const cleaned = cleanLessonText(result.text);
           setPages((prev) =>
             prev.map((p) =>
               p.id === page.id
                 ? {
                     ...p,
                     ocrText: result.text,
-                    editedText: p.editedText || result.text,
+                    editedText: p.editedText || cleaned || result.text,
                     status: quality.ok ? "done" : "lowquality",
                     quality: { score: quality.score, reason: quality.reason },
                     progress: 1,

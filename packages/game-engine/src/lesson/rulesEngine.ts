@@ -34,6 +34,71 @@ export interface GenerateOptions {
 
 // ── Text utilities ────────────────────────────────────────────────────────────
 
+/**
+ * Removes OCR clutter (viewer chrome, margin icons, decorative headers/badges) by
+ * keeping only lines that read like real printed sentences. Deterministic, no AI.
+ *
+ * A line is kept if it has enough "word-like" tokens (>= 3 letters and containing a
+ * vowel) or is a real numbered/number-list line; symbol soup and stray single
+ * characters are dropped.
+ */
+export function cleanLessonText(raw: string): string {
+  const lines = raw.replace(/\r/g, "\n").split("\n");
+  const kept: string[] = [];
+
+  const isListMarker = (t: string) => /^\(?\d+[.)]$/.test(t);
+  const SHORT_WORDS = /^(a|i|is|in|we|if|of|to|it|he|an|as|at|on|or|no|so|be|do|my|up|us|the)$/i;
+  const isNoiseToken = (t: string) => {
+    if (isListMarker(t)) return false;
+    if (/[[\]{}|©®~^_<>*=]/.test(t)) return true; // bracket/symbol soup from OCR
+    const digits = t.replace(/[^0-9]/g, "");
+    if (digits.length) return false; // keep tokens with numbers (examples like 45)
+    const letters = t.replace(/[^A-Za-z]/g, "");
+    if (letters.length === 0) return true; // pure symbols
+    if (letters.length <= 2 && !SHORT_WORDS.test(letters)) return true; // stray glyphs (BS, je)
+    if (letters.length >= 3 && !/[aeiou]/i.test(letters)) return true; // no vowel = garbage (llr, ror)
+    return false;
+  };
+
+  for (const original of lines) {
+    // Collapse spaces and strip leading junk symbols (icons, bullets, quotes).
+    let line = original.replace(/\s+/g, " ").trim();
+    line = line.replace(/^[^A-Za-z0-9(]+/, "").trim();
+    if (line.length < 3) continue;
+
+    let tokens = line.split(/\s+/);
+    // Drop a stray glyph sitting before a list marker, e.g. "BS 1." / "a 4." -> "1." / "4.".
+    if (tokens.length >= 2 && isListMarker(tokens[1]) && !isListMarker(tokens[0]) && tokens[0].length <= 2) {
+      tokens = tokens.slice(1);
+    }
+    // Trim leading/trailing noise tokens (margin icons like BS, i, v, @, je, [ror).
+    while (tokens.length && isNoiseToken(tokens[0])) tokens = tokens.slice(1);
+    while (tokens.length && isNoiseToken(tokens[tokens.length - 1])) tokens = tokens.slice(0, -1);
+    line = tokens.join(" ").trim();
+    if (line.length < 3) continue;
+
+    const wordlike = tokens.filter((t) => {
+      const w = t.replace(/[^A-Za-z]/g, "");
+      return w.length >= 3 && /[aeiou]/i.test(w);
+    });
+    // Real digit lists like "(0, 1, 2, 3 ...)" are meaningful content.
+    const hasNumberList = /\d\s*,\s*\d/.test(line);
+
+    // Fraction of characters that are letters — very low means symbol soup.
+    const letters = (line.match(/[A-Za-z]/g) ?? []).length;
+    const letterRatio = letters / line.length;
+
+    const keep =
+      wordlike.length >= 3 ||
+      (hasNumberList && wordlike.length >= 1) ||
+      (wordlike.length >= 2 && letterRatio >= 0.6 && line.length >= 12);
+
+    if (keep) kept.push(line);
+  }
+
+  return kept.join("\n");
+}
+
 function normalize(raw: string): string {
   return raw
     .replace(/\r/g, "\n")
@@ -413,7 +478,7 @@ function makeSequence(text: string, keywords: string[], opts: GenerateOptions): 
  * can be produced; `warnings` explains anything that could not be generated.
  */
 export function generateLesson(rawText: string, opts: GenerateOptions): GeneratedLesson {
-  const text = normalize(rawText);
+  const text = normalize(cleanLessonText(rawText));
   const sentences = splitSentences(text);
   const keywords = scoreKeywords(sentences);
   const warnings: string[] = [];

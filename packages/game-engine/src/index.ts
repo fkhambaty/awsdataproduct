@@ -69,7 +69,7 @@ export {
 export type { SyllabusPhotoFile, SyllabusZoneId } from "./data/syllabusManifest";
 
 // Lesson rules engine (textbook text -> games, no AI)
-export { generateLesson, splitSentences } from "./lesson/rulesEngine";
+export { generateLesson, splitSentences, cleanLessonText } from "./lesson/rulesEngine";
 export type { GeneratedLesson, GenerateOptions } from "./lesson/rulesEngine";
 export { emojiFor, hasEmoji, categoryFor } from "./lesson/lexicon";
 
