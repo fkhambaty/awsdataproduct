@@ -11,7 +11,7 @@ import {
   signOut,
 } from "@funberry/supabase";
 
-type Step = "form" | "code";
+type Step = "form" | "code" | "success";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -66,7 +66,8 @@ export default function SignupPage() {
       } catch {
         // Non-fatal: proceed to login regardless.
       }
-      router.push("/login?verified=1");
+      // Halt on a clear success screen instead of jumping straight to login.
+      setStep("success");
     } catch (err: unknown) {
       if (err instanceof Error && /expired|invalid|token/i.test(err.message)) {
         setError("That code is wrong or expired. Check the latest email or resend a new code.");
@@ -90,6 +91,50 @@ export default function SignupPage() {
     } finally {
       setResendBusy(false);
     }
+  }
+
+  if (step === "success") {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-emerald-50/90 via-white to-sky-50/50 p-6">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.85, y: 30 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ type: "spring", stiffness: 260, damping: 20 }}
+          className="w-full max-w-md text-center"
+        >
+          <div className="glass-card rounded-kid p-10">
+            <motion.div
+              initial={{ scale: 0, rotate: -20 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 15, delay: 0.1 }}
+              className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-emerald-100 text-6xl"
+            >
+              ✅
+            </motion.div>
+            <h2 className="font-display mb-3 text-3xl font-bold text-emerald-900">
+              Code matched! 🎉
+            </h2>
+            <p className="mb-1 text-lg font-semibold text-gray-700">
+              Your email is verified and your account is ready.
+            </p>
+            <p className="mb-8 break-all text-base font-bold text-emerald-700">{email}</p>
+
+            <motion.button
+              type="button"
+              whileHover={{ scale: 1.03, y: -2 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => router.push("/login?verified=1")}
+              className="kid-glass-btn kid-glass-leaf w-full rounded-kid py-4 text-lg"
+            >
+              Continue to Login →
+            </motion.button>
+            <p className="mt-4 text-sm text-gray-500">
+              Sign in with the email and password you just chose.
+            </p>
+          </div>
+        </motion.div>
+      </main>
+    );
   }
 
   if (step === "code") {
