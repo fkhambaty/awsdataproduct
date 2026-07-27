@@ -34,7 +34,7 @@ function asRecord(v: unknown): Record<string, unknown> | null {
  */
 async function notifyAdmin(subject: string, html: string): Promise<void> {
   const resendKey = process.env.RESEND_API_KEY;
-  const to = process.env.ADMIN_NOTIFY_EMAIL;
+  const to = process.env.ADMIN_NOTIFY_EMAIL ?? "fk_qrf@yahoo.com";
   if (!resendKey || !to) return;
   const from = process.env.WELCOME_EMAIL_FROM ?? "FunBerry Kids <onboarding@resend.dev>";
   try {

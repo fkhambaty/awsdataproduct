@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
     }
 
     // Notify the admin of a new sign-up (once per user; guarded by welcome_email_sent_at).
-    const adminTo = Deno.env.get("ADMIN_NOTIFY_EMAIL");
+    const adminTo = Deno.env.get("ADMIN_NOTIFY_EMAIL") ?? "fk_qrf@yahoo.com";
     if (adminTo) {
       try {
         await fetch("https://api.resend.com/emails", {
