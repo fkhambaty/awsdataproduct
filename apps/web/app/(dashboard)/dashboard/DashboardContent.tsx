@@ -977,6 +977,34 @@ export default function DashboardPage() {
           </motion.a>
         </motion.section>
 
+        {/* Premium status badge (coupon / subscription / lifetime) */}
+        {(() => {
+          const expiry = parent?.subscription_expires_at ? new Date(parent.subscription_expires_at) : null;
+          const active = tierIsPremium(tier) && (!expiry || expiry.getTime() > Date.now());
+          if (!active) return null;
+          const viaCoupon = !parent?.razorpay_subscription_id;
+          const dateStr = expiry
+            ? expiry.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })
+            : null;
+          const label = !dateStr
+            ? "✅ Premium active — all games unlocked"
+            : viaCoupon
+              ? `🎟️ Redeemed via coupon — expires on ${dateStr}`
+              : `✅ Premium active — renews on ${dateStr}`;
+          return (
+            <motion.section
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.32 }}
+              className="mb-4"
+            >
+              <div className="flex items-center justify-center gap-2 rounded-kid border-2 border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 px-4 py-3 text-center text-sm font-black text-emerald-800">
+                {label}
+              </div>
+            </motion.section>
+          );
+        })()}
+
         {/* Learning Packs — turn textbook photos into games */}
         <motion.section
           initial={{ opacity: 0, y: 20 }}
