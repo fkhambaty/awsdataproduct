@@ -28,6 +28,26 @@ function asRecord(v: unknown): Record<string, unknown> | null {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 }
 
+/**
+ * Fire-and-forget admin email (via Resend) so you're notified of new subscriptions.
+ * No-ops silently unless RESEND_API_KEY and ADMIN_NOTIFY_EMAIL are set.
+ */
+async function notifyAdmin(subject: string, html: string): Promise<void> {
+  const resendKey = process.env.RESEND_API_KEY;
+  const to = process.env.ADMIN_NOTIFY_EMAIL;
+  if (!resendKey || !to) return;
+  const from = process.env.WELCOME_EMAIL_FROM ?? "FunBerry Kids <onboarding@resend.dev>";
+  try {
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to: [to], subject, html }),
+    });
+  } catch (e) {
+    console.warn("[razorpay/webhook] admin notify failed", e);
+  }
+}
+
 function notesTier(entity: Record<string, unknown>): string | null {
   const notes = asRecord(entity.notes);
   const tier = notes?.tier;
@@ -110,6 +130,28 @@ export async function POST(request: Request) {
           } as never
         )
         .eq("id", userId!);
+
+      // Notify the admin of a new/renewed subscription (only on first activation).
+      if (event === "subscription.activated") {
+        try {
+          const { data: p } = await admin
+            .from("parents")
+            .select("email, name")
+            .eq("id", userId!)
+            .maybeSingle();
+          const row = p as { email?: string; name?: string } | null;
+          await notifyAdmin(
+            `FunBerry: new ${tier} subscription`,
+            `<p>A parent just subscribed on FunBerryKids.</p>
+             <p><strong>Name:</strong> ${row?.name ?? "—"}<br/>
+             <strong>Email:</strong> ${row?.email ?? "—"}<br/>
+             <strong>Plan:</strong> ${tier}<br/>
+             <strong>Subscription:</strong> ${subId ?? "—"}</p>`,
+          );
+        } catch (e) {
+          console.warn("[razorpay/webhook] subscription notify failed", e);
+        }
+      }
     } else if (
       event === "subscription.cancelled" ||
       event === "subscription.completed" ||

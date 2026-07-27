@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { zones, getZoneById } from "@funberry/config";
+import { zones, getZoneById, isPremium } from "@funberry/config";
 import {
   getGamesForZone,
   getZoneTheme,
@@ -25,12 +25,24 @@ import {
   RankProvider,
 } from "@funberry/game-engine";
 import type { GameConfig, GameResult } from "@funberry/game-engine";
-import { getChildren, getChildBestProgress, saveProgress, verifyParentPin, getChildRank, getAssignedPacksForChild } from "@funberry/supabase";
-import type { Child, LearningPack } from "@funberry/supabase";
+import { getChildren, getChildBestProgress, saveProgress, verifyParentPin, getChildRank, getAssignedPacksForChild, getParent } from "@funberry/supabase";
+import type { Child, LearningPack, Parent } from "@funberry/supabase";
 import { LeaderboardModal } from "../../components/Leaderboard";
 import { FunBerryLogo } from "../../components/FunBerryLogo";
 
 type ViewMode = "who" | "zones" | "games" | "packGames" | "playing";
+
+/** Roughly this share of each world's games is free for everyone; the rest need Premium. */
+const FREE_GAME_FRACTION = 0.3;
+
+/** A parent counts as paid when on a premium tier that hasn't expired (lifetime never expires). */
+function computeIsPaid(parent: Parent | null): boolean {
+  if (!parent) return false;
+  if (!isPremium(parent.subscription_tier)) return false;
+  const expiry = parent.subscription_expires_at;
+  if (!expiry) return true; // lifetime or no expiry set
+  return new Date(expiry).getTime() > Date.now();
+}
 
 /** Kid-facing copy: web records each completed round to Supabase for stars + parent coaching reports. */
 const KID_SAVED_PROGRESS_WHO =
@@ -352,6 +364,8 @@ export default function PlayContent() {
   const [childRank, setChildRank] = useState<{ rank: number; total: number } | null>(null);
   const [replayNonce, setReplayNonce] = useState(0);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [isPaid, setIsPaid] = useState(false);
+  const [showLock, setShowLock] = useState(false);
 
   // Guards each play instance so stars are credited exactly once, even if a template's
   // onComplete double-fires (e.g. React strict mode) or the component briefly remounts.
@@ -402,6 +416,13 @@ export default function PlayContent() {
       .catch(() => {})
       .finally(() => setLoadingChildren(false));
   }, [loadProgress, loadPacks]);
+
+  // Determine whether the account is on a paid plan (drives free-vs-premium game locks).
+  useEffect(() => {
+    getParent()
+      .then((p) => setIsPaid(computeIsPaid(p)))
+      .catch(() => setIsPaid(false));
+  }, []);
 
   const zoneGames = useMemo(
     () => (selectedZone ? getGamesForZone(selectedZone) : []),
@@ -883,6 +904,19 @@ export default function PlayContent() {
     const adventureGames = zoneGames.filter((g) => g.type === "bubble_pop" || g.type === "star_catcher");
     const classicGames = zoneGames.filter((g) => g.type !== "bubble_pop" && g.type !== "star_catcher");
 
+    // Free tier: ~30% of each world's games are playable; the rest need Premium.
+    const freeCount = Math.max(1, Math.ceil(zoneGames.length * FREE_GAME_FRACTION));
+    const freeIds = new Set(zoneGames.slice(0, freeCount).map((g) => g.id));
+    const isLocked = (id: string) => !isPaid && !freeIds.has(id);
+    const openGame = (game: GameConfig) => {
+      if (isLocked(game.id)) {
+        playTap();
+        setShowLock(true);
+      } else {
+        handleGameClick(game);
+      }
+    };
+
     return (
       <main className="min-h-screen px-4 py-4 sm:px-5 sm:py-5" style={{ background: theme.bgGradient }}>
         {/* Parent Gate Modal */}
@@ -892,6 +926,47 @@ export default function PlayContent() {
               onSuccess={() => { setShowParentGate(false); router.push("/dashboard"); }}
               onCancel={() => setShowParentGate(false)}
             />
+          )}
+        </AnimatePresence>
+
+        {/* Premium lock prompt (shown when a kid taps a locked game) */}
+        <AnimatePresence>
+          {showLock && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowLock(false)}
+              className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+            >
+              <motion.div
+                initial={{ scale: 0.85, y: 24 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.85, y: 24 }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-sm rounded-kid bg-white p-7 text-center shadow-2xl"
+              >
+                <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 text-5xl">🔒</div>
+                <h3 className="font-display text-2xl font-black text-slate-800">Premium game!</h3>
+                <p className="mx-auto mt-2 max-w-xs text-sm font-semibold text-slate-600">
+                  Ask a grown-up to unlock all games and worlds.
+                </p>
+                <div className="mt-6 flex flex-col gap-2">
+                  <button
+                    onClick={() => { playTap(); setShowLock(false); setShowParentGate(true); }}
+                    className="kid-glass-btn kid-glass-violet rounded-2xl px-6 py-3 text-sm font-black"
+                  >
+                    🔒 For grown-ups
+                  </button>
+                  <button
+                    onClick={() => { playTap(); setShowLock(false); }}
+                    className="rounded-2xl px-6 py-2.5 text-sm font-bold text-slate-400 hover:text-slate-600"
+                  >
+                    Maybe later
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
           )}
         </AnimatePresence>
 
@@ -997,6 +1072,7 @@ export default function PlayContent() {
               <div className="space-y-2">
                 {adventureGames.map((game, i) => {
                   const stars = completedGames[game.id] ?? 0;
+                  const locked = isLocked(game.id);
                   return (
                     <motion.button
                       key={game.id}
@@ -1005,33 +1081,42 @@ export default function PlayContent() {
                       transition={{ delay: i * 0.07, type: "spring", stiffness: 200, damping: 18 }}
                       whileHover={{ scale: 1.03, x: 5 }}
                       whileTap={{ scale: 0.97 }}
-                      onClick={() => handleGameClick(game)}
+                      onClick={() => openGame(game)}
+                      aria-label={locked ? `${game.title} (Premium — locked)` : game.title}
                       className="kid-glass-panel flex w-full items-center gap-3 rounded-kid p-4 text-left sm:gap-4 sm:p-5"
                       style={{
                         background: "linear-gradient(135deg, #fdf4ff, #fae8ff)",
                         borderWidth: 3,
                         borderStyle: "solid",
                         borderColor: "#e9d5ff",
+                        opacity: locked ? 0.72 : 1,
                       }}
                     >
                       <motion.span
                         className="text-4xl"
-                        animate={{ scale: [1, 1.2, 1], rotate: [0, -8, 0] }}
+                        animate={locked ? undefined : { scale: [1, 1.2, 1], rotate: [0, -8, 0] }}
                         transition={{ repeat: Infinity, duration: 2, delay: i * 0.3, ease: "easeInOut" }}
+                        style={locked ? { filter: "grayscale(1)" } : undefined}
                       >
-                        {GAME_ICONS[game.type] ?? "🎮"}
+                        {locked ? "🔒" : GAME_ICONS[game.type] ?? "🎮"}
                       </motion.span>
                       <div className="flex-1">
                         <p className="font-black text-purple-900 font-display text-base">{game.title}</p>
                         <p className="text-xs text-purple-400 mt-0.5 font-bold">{GAME_LABELS[game.type]}</p>
                       </div>
                       <div className="flex flex-col items-end gap-1">
-                        <div className="flex gap-0.5">
-                          {[1, 2, 3].map((s) => (
-                            <span key={s} className={`text-lg ${s <= stars ? "" : "grayscale opacity-20"}`}>⭐</span>
-                          ))}
-                        </div>
-                        {stars === 0 && <span className="text-[10px] font-bold text-purple-400">PLAY!</span>}
+                        {locked ? (
+                          <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-black text-amber-950">PREMIUM</span>
+                        ) : (
+                          <>
+                            <div className="flex gap-0.5">
+                              {[1, 2, 3].map((s) => (
+                                <span key={s} className={`text-lg ${s <= stars ? "" : "grayscale opacity-20"}`}>⭐</span>
+                              ))}
+                            </div>
+                            {stars === 0 && <span className="text-[10px] font-bold text-purple-400">PLAY!</span>}
+                          </>
+                        )}
                       </div>
                     </motion.button>
                   );
@@ -1052,6 +1137,7 @@ export default function PlayContent() {
               <div className="space-y-2.5">
                 {classicGames.map((game, i) => {
                   const stars = completedGames[game.id] ?? 0;
+                  const locked = isLocked(game.id);
                   return (
                     <motion.button
                       key={game.id}
@@ -1060,26 +1146,32 @@ export default function PlayContent() {
                       transition={{ delay: i * 0.05, type: "spring", stiffness: 200, damping: 18 }}
                       whileHover={{ scale: 1.02, x: 4 }}
                       whileTap={{ scale: 0.98 }}
-                      onClick={() => handleGameClick(game)}
+                      onClick={() => openGame(game)}
+                      aria-label={locked ? `${game.title} (Premium — locked)` : game.title}
                       className="kid-glass-panel w-full flex items-center gap-4 rounded-kid p-4 text-left"
-                      style={{ borderLeft: `4px solid ${theme.accentColor}` }}
+                      style={{ borderLeft: `4px solid ${theme.accentColor}`, opacity: locked ? 0.72 : 1 }}
                     >
                       <motion.span
                         className="text-3xl"
-                        animate={{ scale: [1, 1.08, 1] }}
+                        animate={locked ? undefined : { scale: [1, 1.08, 1] }}
                         transition={{ repeat: Infinity, duration: 2.5, delay: i * 0.18 }}
+                        style={locked ? { filter: "grayscale(1)" } : undefined}
                       >
-                        {GAME_ICONS[game.type] ?? "🎮"}
+                        {locked ? "🔒" : GAME_ICONS[game.type] ?? "🎮"}
                       </motion.span>
                       <div className="flex-1">
                         <p className="font-bold text-gray-800 font-display">{game.title}</p>
                         <p className="text-xs text-gray-400 mt-0.5">{GAME_LABELS[game.type]}</p>
                       </div>
-                      <div className="flex gap-0.5">
-                        {[1, 2, 3].map((s) => (
-                          <span key={s} className={`text-base ${s <= stars ? "" : "grayscale opacity-25"}`}>⭐</span>
-                        ))}
-                      </div>
+                      {locked ? (
+                        <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-black text-amber-950">PREMIUM</span>
+                      ) : (
+                        <div className="flex gap-0.5">
+                          {[1, 2, 3].map((s) => (
+                            <span key={s} className={`text-base ${s <= stars ? "" : "grayscale opacity-25"}`}>⭐</span>
+                          ))}
+                        </div>
+                      )}
                     </motion.button>
                   );
                 })}

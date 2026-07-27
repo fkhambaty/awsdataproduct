@@ -157,6 +157,30 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Notify the admin of a new sign-up (once per user; guarded by welcome_email_sent_at).
+    const adminTo = Deno.env.get("ADMIN_NOTIFY_EMAIL");
+    if (adminTo) {
+      try {
+        await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${resendKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from,
+            to: [adminTo],
+            subject: "FunBerry: new sign-up 🎉",
+            html: `<p>A new parent just joined FunBerryKids.</p>
+                   <p><strong>Name:</strong> ${escapeHtml(displayName)}<br/>
+                   <strong>Email:</strong> ${escapeHtml(email)}</p>`,
+          }),
+        });
+      } catch (e) {
+        console.warn("admin sign-up notify failed", e);
+      }
+    }
+
     return new Response(JSON.stringify({ ok: true, sent: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
