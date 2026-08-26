@@ -305,6 +305,22 @@ export async function getFamilyPlayStats(): Promise<{
   uniqueGamesTouched: number;
   lastActivityAt: string | null;
 }> {
+  const { data, error } = await supabase.rpc("family_play_stats" as never);
+  if (!error && data) {
+    const row = (Array.isArray(data) ? data[0] : data) as {
+      total_sessions?: number | string;
+      unique_games_touched?: number | string;
+      last_activity_at?: string | null;
+    } | null;
+    if (row) {
+      return {
+        totalSessions: Number(row.total_sessions ?? 0),
+        uniqueGamesTouched: Number(row.unique_games_touched ?? 0),
+        lastActivityAt: row.last_activity_at ?? null,
+      };
+    }
+  }
+
   const kids = await getChildren();
   let totalSessions = 0;
   const gameIds = new Set<string>();

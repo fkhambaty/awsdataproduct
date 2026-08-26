@@ -31,20 +31,10 @@ export { StreakCounter } from "./components/StreakCounter";
 export { FloatingEmojis } from "./components/FloatingEmojis";
 export { GameShell } from "./components/GameShell";
 
-// Templates
-export { PictureQuiz } from "./templates/PictureQuiz";
-export { DragSort } from "./templates/DragSort";
-export { MemoryMatch } from "./templates/MemoryMatch";
-export { SequenceBuilder } from "./templates/SequenceBuilder";
-export { SpotDifference } from "./templates/SpotDifference";
-export { ColorActivity } from "./templates/ColorActivity";
-export { WordPictureLink } from "./templates/WordPictureLink";
-export { InteractiveStory } from "./templates/InteractiveStory";
-export { BubblePopAdventure } from "./templates/BubblePopAdventure";
-export { StarCatcher } from "./templates/StarCatcher";
-export { OddOneOut } from "./templates/OddOneOut";
-export { TrueFalse } from "./templates/TrueFalse";
-export { PixiLab } from "./templates/PixiLab";
+// Templates are loaded on demand (see loadGameTemplate) so PixiJS and unused
+// game UIs stay out of the play-shell bundle.
+export { loadGameTemplate } from "./loadGameTemplate";
+export type { GameTemplateProps, GameTemplateComponent } from "./loadGameTemplate";
 
 // Progression
 export {

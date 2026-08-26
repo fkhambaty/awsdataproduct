@@ -7,19 +7,6 @@ import { zones, getZoneById, isPremium } from "@funberry/config";
 import {
   getGamesForZone,
   getZoneTheme,
-  PictureQuiz,
-  DragSort,
-  MemoryMatch,
-  SequenceBuilder,
-  SpotDifference,
-  OddOneOut,
-  TrueFalse,
-  ColorActivity,
-  WordPictureLink,
-  InteractiveStory,
-  BubblePopAdventure,
-  StarCatcher,
-  PixiLab,
   GameShell,
   playTap,
   RankProvider,
@@ -29,6 +16,7 @@ import { getChildren, getChildBestProgress, saveProgress, verifyParentPin, getCh
 import type { Child, LearningPack, Parent, Progress } from "@funberry/supabase";
 import { LeaderboardModal } from "../../components/Leaderboard";
 import { FunBerryLogo } from "../../components/FunBerryLogo";
+import { GamePlayer } from "./GamePlayer";
 
 type ViewMode = "who" | "zones" | "games" | "packGames" | "playing";
 
@@ -525,12 +513,15 @@ export default function PlayContent() {
     );
   }
 
-  // Load children on mount
+  // Load children + parent in parallel (one round trip pair, not a waterfall).
   useEffect(() => {
-    getChildren()
-      .then((kids) => {
+    Promise.all([
+      getChildren().catch(() => [] as Child[]),
+      getParent().catch(() => null),
+    ])
+      .then(([kids, parent]) => {
         setChildren(kids);
-        // If exactly one child, auto-select them
+        setIsPaid(computeIsPaid(parent));
         if (kids.length === 1) {
           setSelectedChild(kids[0]);
           loadProgress(kids[0].id);
@@ -538,16 +529,8 @@ export default function PlayContent() {
           setView("zones");
         }
       })
-      .catch(() => {})
       .finally(() => setLoadingChildren(false));
   }, [loadProgress, loadPacks]);
-
-  // Determine whether the account is on a paid plan (drives free-vs-premium game locks).
-  useEffect(() => {
-    getParent()
-      .then((p) => setIsPaid(computeIsPaid(p)))
-      .catch(() => setIsPaid(false));
-  }, []);
 
   const zoneGames = useMemo(
     () => (selectedZone ? getGamesForZone(selectedZone) : []),
@@ -677,44 +660,14 @@ export default function PlayContent() {
 
   function renderGame() {
     if (!selectedGame) return null;
-    const { data } = selectedGame;
-    const accent = theme.accentColor;
-
-    switch (data.type) {
-      case "picture_quiz":
-        return <PictureQuiz data={data} onComplete={handleGameComplete} accentColor={accent} onNextGame={handleNextGame} />;
-      case "drag_sort":
-        return <DragSort data={data} onComplete={handleGameComplete} accentColor={accent} onNextGame={handleNextGame} />;
-      case "memory_match":
-        return <MemoryMatch data={data} onComplete={handleGameComplete} accentColor={accent} onNextGame={handleNextGame} />;
-      case "sequence_builder":
-        return <SequenceBuilder data={data} onComplete={handleGameComplete} accentColor={accent} onNextGame={handleNextGame} />;
-      case "spot_difference":
-        return <SpotDifference data={data} onComplete={handleGameComplete} accentColor={accent} onNextGame={handleNextGame} />;
-      case "odd_one_out":
-        return <OddOneOut data={data} onComplete={handleGameComplete} accentColor={accent} onNextGame={handleNextGame} />;
-      case "true_false":
-        return <TrueFalse data={data} onComplete={handleGameComplete} accentColor={accent} onNextGame={handleNextGame} />;
-      case "color_activity":
-        return <ColorActivity data={data} onComplete={handleGameComplete} accentColor={accent} onNextGame={handleNextGame} />;
-      case "word_picture_link":
-        return <WordPictureLink data={data} onComplete={handleGameComplete} accentColor={accent} onNextGame={handleNextGame} />;
-      case "interactive_story":
-        return <InteractiveStory data={data} onComplete={handleGameComplete} accentColor={accent} onNextGame={handleNextGame} />;
-      case "bubble_pop":
-        return <BubblePopAdventure data={data} onComplete={handleGameComplete} accentColor={accent} onNextGame={handleNextGame} />;
-      case "star_catcher":
-        return <StarCatcher data={data} onComplete={handleGameComplete} accentColor={accent} onNextGame={handleNextGame} />;
-      case "pixi_lab":
-        return <PixiLab data={data} onComplete={handleGameComplete} accentColor={accent} onNextGame={handleNextGame} />;
-      default:
-        return (
-          <div style={{ textAlign: "center", padding: 40 }}>
-            <p style={{ fontSize: 48, marginBottom: 16 }}>🚧</p>
-            <p style={{ color: "#6b7280", fontWeight: 600 }}>This game type is coming soon!</p>
-          </div>
-        );
-    }
+    return (
+      <GamePlayer
+        game={selectedGame}
+        accentColor={theme.accentColor}
+        onComplete={handleGameComplete}
+        onNextGame={handleNextGame}
+      />
+    );
   }
 
   /* ── Who's Playing? ── */

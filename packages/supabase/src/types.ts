@@ -356,6 +356,18 @@ export interface Database {
         Args: { p_child_id: string };
         Returns: { rank: number; total: number };
       };
+      increment_stars: {
+        Args: { p_child_id: string; p_stars: number };
+        Returns: undefined;
+      };
+      family_play_stats: {
+        Args: Record<string, never>;
+        Returns: {
+          total_sessions: number;
+          unique_games_touched: number;
+          last_activity_at: string | null;
+        };
+      };
     };
   };
 }

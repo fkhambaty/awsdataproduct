@@ -60,8 +60,8 @@ const config: Config = {
         },
       },
       fontFamily: {
-        display: ["Poppins", "sans-serif"],
-        body: ["Inter", "sans-serif"],
+        display: ["var(--font-fredoka)", "ui-rounded", "sans-serif"],
+        body: ["var(--font-nunito)", "ui-sans-serif", "sans-serif"],
       },
       borderRadius: {
         kid: "1.25rem",
