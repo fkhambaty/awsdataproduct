@@ -59,8 +59,26 @@ export {
 export type { SyllabusPhotoFile, SyllabusZoneId } from "./data/syllabusManifest";
 
 // Lesson rules engine (textbook text -> games, no AI)
-export { generateLesson, splitSentences, cleanLessonText } from "./lesson/rulesEngine";
-export type { GeneratedLesson, GenerateOptions } from "./lesson/rulesEngine";
+export {
+  generateLesson,
+  splitSentences,
+  cleanLessonText,
+  countGameItems,
+  buildLessonQualityMetrics,
+} from "./lesson/rulesEngine";
+export type {
+  GeneratedLesson,
+  GenerateOptions,
+  LessonQualityMetrics,
+} from "./lesson/rulesEngine";
+export {
+  assessOcrPageQuality,
+  countReadableWords,
+  OCR_MIN_TEXT_LENGTH,
+  OCR_MIN_WORD_COUNT,
+  OCR_MIN_CONFIDENCE,
+} from "./lesson/ocrQuality";
+export type { OcrQualityInput, OcrPageQuality } from "./lesson/ocrQuality";
 export { emojiFor, hasEmoji, categoryFor } from "./lesson/lexicon";
 
 // Types

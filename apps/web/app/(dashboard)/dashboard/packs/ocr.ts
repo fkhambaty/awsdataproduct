@@ -1,6 +1,7 @@
 "use client";
 
 import type { Worker } from "tesseract.js";
+import { assessOcrPageQuality, countReadableWords } from "@funberry/game-engine";
 
 export interface OcrResult {
   text: string;
@@ -21,26 +22,7 @@ export interface OcrRunner {
  * we ask the parent to re-upload a clearer photo.
  */
 export function assessPageQuality(result: OcrResult): { ok: boolean; score: number; reason?: string } {
-  const score = Math.round(result.confidence);
-  if (result.text.trim().length < 40 || result.wordCount < 10) {
-    return {
-      ok: false,
-      score,
-      reason: "We couldn't read enough text. Move closer so the page fills the frame, then retake.",
-    };
-  }
-  if (result.confidence < 65) {
-    return {
-      ok: false,
-      score,
-      reason: "This photo looks blurry or dim. Retake it in good light, holding the camera flat and steady.",
-    };
-  }
-  return { ok: true, score };
-}
-
-function countReadableWords(text: string): number {
-  return (text.match(/[A-Za-z]{3,}/g) ?? []).length;
+  return assessOcrPageQuality(result);
 }
 
 /**

@@ -10,7 +10,7 @@ The brand name and tagline live in [`packages/config/src/brand.ts`](packages/con
 - Two surfaces: **kid play** (`/play`) and **parent dashboard** (`/dashboard`).
 - Progress = stars, best scores, coaching-style reports for parents.
 - **Premium** unlocks most games; free accounts play a slice of each world.
-- Optional **Learning Packs**: a parent photographs textbook pages, OCR + a **rules engine** (not an LLM) turn text into games.
+- Optional **Learning Packs**: a parent photographs textbook pages, OCR + a **rules engine** (not an LLM) turn text into games. Read [`docs/LEARNING_PACKS.md`](docs/LEARNING_PACKS.md) before changing this pipeline.
 
 ## What this product is not
 
@@ -89,6 +89,7 @@ API keys dashboard: <https://supabase.com/dashboard/project/tkuakihsswzhrcrqcqel
 
 - **Do not invent social proof** (user counts, school logos, “used in N cities”) unless it is real and already on the site.
 - **Do not claim a feature that is off.** Mobile games, Stripe, offline mode, and “AI that writes lessons” are not live product promises.
+- **Do not expand Learning Packs before measuring their evidence gate.** Run the documented 10-page trust test first; automated OCR/game counts do not prove factual correctness.
 - **Kid copy stays kind and simple.** Parent copy can be more precise. Never show developer jargon (RLS, JWT, RPC) on `/play`.
 - **Prices** live in [`packages/config/src/pricing.ts`](packages/config/src/pricing.ts). Play-side free/premium split is also in `PlayContent` (`FREE_GAME_FRACTION`). If those disagree, fix both; do not hardcode rupees in a random button.
 - Prefer **database + RLS** for anything a hostile parent account could abuse (stars, other kids’ rows, coupons).
@@ -113,6 +114,7 @@ If you add a Postgres function or policy, add a migration under `supabase/migrat
 | Zone name, order, free vs locked | `packages/config/src/zones.ts` |
 | New/edited EVS games | `packages/game-engine/src/games/evs/` |
 | New game **type** / template | `packages/game-engine/src/templates/` **and** `loadGameTemplate.ts` |
+| Learning Pack OCR, generation, review or evaluation | `docs/LEARNING_PACKS.md` first |
 | Parent report logic | `packages/supabase/src/coachingReport.ts` |
 | Data access | `packages/supabase/src/hooks.ts` |
 | Marketing landing | `apps/web/app/HomeContent.tsx` |

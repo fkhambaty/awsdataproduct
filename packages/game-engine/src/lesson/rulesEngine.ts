@@ -30,6 +30,21 @@ export interface GenerateOptions {
   subject?: string;
   /** Zone id used only for theming the game shell. */
   zoneId?: string;
+  /** Injectable random source for reproducible evaluations and tests. */
+  random?: () => number;
+}
+
+export interface LessonQualityMetrics {
+  rawCharacterCount: number;
+  cleanedCharacterCount: number;
+  factCount: number;
+  keywordCount: number;
+  gameCount: number;
+  gamesByType: Partial<Record<GameConfig["type"], number>>;
+  totalItems: number;
+  warningCount: number;
+  warnings: string[];
+  generatedGameIds: string[];
 }
 
 // ── Text utilities ────────────────────────────────────────────────────────────
@@ -208,10 +223,10 @@ function scoreKeywords(sentences: string[]): string[] {
     .map(([w]) => w);
 }
 
-function shuffle<T>(arr: T[]): T[] {
+function shuffle<T>(arr: T[], random: () => number): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(random() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
@@ -273,11 +288,12 @@ function makeClozeQuiz(sentences: string[], keywords: string[], opts: GenerateOp
     if (distractors.length < 3) continue;
     usedAnswers.add(answer);
 
-    const chosen = shuffle(distractors).slice(0, 3);
+    const random = opts.random ?? Math.random;
+    const chosen = shuffle(distractors, random).slice(0, 3);
     const blanked = words
       .map((w, i) => (i === answerIdx ? "_____" : w))
       .join(" ");
-    const options = shuffle([answer, ...chosen]).map((w) => ({
+    const options = shuffle([answer, ...chosen], random).map((w) => ({
       id: w,
       label: titleCase(w),
       emoji: emojiFor(w),
@@ -538,5 +554,84 @@ export function generateLesson(rawText: string, opts: GenerateOptions): Generate
     keywords: keywords.slice(0, 40),
     facts: sentences.slice(0, 20),
     warnings,
+  };
+}
+
+function countPixiItems(data: Extract<GameConfig["data"], { type: "pixi_lab" }>): number {
+  switch (data.mode) {
+    case "animal_product":
+      return data.creatures.length;
+    case "wind_glide":
+      return data.targetGood;
+    case "rock_tap":
+    case "word_unscramble":
+      return data.rounds.length;
+    default: {
+      const exhaustive: never = data;
+      return exhaustive;
+    }
+  }
+}
+
+/** Count the answerable units in any existing game template. */
+export function countGameItems(game: GameConfig): number {
+  switch (game.data.type) {
+    case "drag_sort":
+      return game.data.items.length;
+    case "memory_match":
+      return game.data.pairs.length;
+    case "picture_quiz":
+      return game.data.questions.length;
+    case "sequence_builder":
+      return game.data.steps.length;
+    case "spot_difference":
+      return game.data.differences.length;
+    case "odd_one_out":
+      return game.data.rounds.length;
+    case "true_false":
+      return game.data.questions.length;
+    case "color_activity":
+      return game.data.regions.length;
+    case "word_picture_link":
+      return game.data.pairs.length;
+    case "interactive_story":
+      return game.data.pages.length;
+    case "bubble_pop":
+      return game.data.bubbles.length;
+    case "star_catcher":
+      return game.data.items.length;
+    case "pixi_lab":
+      return countPixiItems(game.data);
+    default: {
+      const exhaustive: never = game.data;
+      return exhaustive;
+    }
+  }
+}
+
+/** Pure diagnostics for comparing generator runs; human review still decides trust. */
+export function buildLessonQualityMetrics(
+  rawText: string,
+  lesson: GeneratedLesson,
+): LessonQualityMetrics {
+  const gamesByType: LessonQualityMetrics["gamesByType"] = {};
+  let totalItems = 0;
+
+  for (const game of lesson.games) {
+    gamesByType[game.type] = (gamesByType[game.type] ?? 0) + 1;
+    totalItems += countGameItems(game);
+  }
+
+  return {
+    rawCharacterCount: rawText.length,
+    cleanedCharacterCount: cleanLessonText(rawText).length,
+    factCount: lesson.facts.length,
+    keywordCount: lesson.keywords.length,
+    gameCount: lesson.games.length,
+    gamesByType,
+    totalItems,
+    warningCount: lesson.warnings.length,
+    warnings: [...lesson.warnings],
+    generatedGameIds: lesson.games.map((game) => game.id),
   };
 }

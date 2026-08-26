@@ -14,8 +14,20 @@ An educational games platform for kids aged 5-8, aligned with the ICSE Class 2 s
 | Website | Next.js 15, Tailwind CSS, Framer Motion |
 | Mobile App | React Native, Expo |
 | Backend | Supabase (Auth, PostgreSQL, Storage) |
-| Payments | Stripe (web), RevenueCat (mobile) |
+| Payments | Razorpay INR subscriptions (web); mobile billing is not live |
 | Language | TypeScript |
+
+## Learning Packs
+
+Parents can photograph textbook pages, correct on-device OCR text, review deterministic generated
+games, and assign the pack to a child. There is no lesson-writing LLM in the production flow.
+
+Before expanding this feature, read [`docs/LEARNING_PACKS.md`](docs/LEARNING_PACKS.md) and run its
+private 10-page evidence gate:
+
+```bash
+npm run eval:packs -- --input "/absolute/path/to/textbook-pages"
+```
 
 ## Project Structure
 

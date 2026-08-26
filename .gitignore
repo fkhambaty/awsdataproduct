@@ -18,4 +18,7 @@ android/
 # Syllabus camera photos (~100MB+); sync locally: node scripts/sync-syllabus-photos.mjs
 apps/web/public/syllabus-photos/*.jpg
 apps/web/public/syllabus-photos/*.jpeg
+# Textbook source pages and OCR evaluation bundles may contain copyrighted text.
+apps/web/public/book-pages/*
+.local/learning-pack-evals/
 .vercel
