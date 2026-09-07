@@ -9,7 +9,7 @@ The brand name and tagline live in [`packages/config/src/brand.ts`](packages/con
 - A **village of learning zones**: 15 ICSE Class 2 EVS themes plus a Computer Studies exam world.
 - Two surfaces: **kid play** (`/play`) and **parent dashboard** (`/dashboard`).
 - Progress = stars, best scores, coaching-style reports for parents.
-- **Premium** unlocks most games; free accounts play a slice of each world.
+- **Premium** unlocks most games; free accounts play a slice of each EVS world. **Computer Lab is fully free** (every folder and game).
 - Optional **Learning Packs**: a parent photographs textbook pages, OCR + a **rules engine** (not an LLM) turn text into games. Read [`docs/LEARNING_PACKS.md`](docs/LEARNING_PACKS.md) before changing this pipeline.
 
 ## What this product is not

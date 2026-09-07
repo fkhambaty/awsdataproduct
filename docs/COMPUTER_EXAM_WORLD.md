@@ -55,8 +55,7 @@ Each source section is shown as a folder instead of one long question bank:
 4. The final activity is visibly labeled **Final challenge**.
 5. The final challenge unlocks after every practice game in its folder has earned a star.
 6. Completing every game changes the folder state to **Mastered**.
-7. The complete first folder is free; later folders stay together behind the grown-up unlock flow
-   and do not expand into rows of child-facing paywall prompts.
+7. Computer Lab is fully free: every folder and game is playable without Premium.
 
 The design uses existing game templates so sound, immediate correction, streaks, replay,
 confetti and star rewards stay consistent with the rest of FunBerry. PixiJS is loaded only for

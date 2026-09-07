@@ -958,7 +958,8 @@ export default function PlayContent() {
                 const zoneFolders = getCurriculumSectionsForZone(zone.id);
                 const zoneBestStars = zoneGamesData.reduce((sum, g) => sum + (completedGames[g.id] ?? 0), 0);
                 const zoneMaxStars = zoneGamesData.reduce((sum, game) => sum + game.maxStars, 0);
-                const playableFolders = isPaid ? zoneFolders : zoneFolders.slice(0, 1);
+                const foldersOpen = isPaid || zone.id === "computers";
+                const playableFolders = foldersOpen ? zoneFolders : zoneFolders.slice(0, 1);
                 const masteredFolders = playableFolders.filter((folder) =>
                   folder.entries.every((entry) => (completedGames[entry.game.id] ?? 0) > 0),
                 ).length;
@@ -992,7 +993,7 @@ export default function PlayContent() {
                     <p className="mt-1 font-display text-sm font-black text-slate-800">{zone.name}</p>
                     <p className="text-xs font-bold text-slate-600">
                       {zoneFolders.length > 0
-                        ? isPaid ? `${zoneFolders.length} folders` : "1 free folder"
+                        ? foldersOpen ? `${zoneFolders.length} folders` : "1 free folder"
                         : `${zoneGamesData.length} games`}
                     </p>
                     {zoneFolders.length > 0 ? (
@@ -1042,7 +1043,7 @@ export default function PlayContent() {
             .slice(0, Math.max(1, Math.ceil(zoneGames.length * FREE_GAME_FRACTION)))
             .map((game) => game.id),
         );
-    const isLocked = (id: string) => !isPaid && !freeIds.has(id);
+    const isLocked = (id: string) => !isPaid && zone?.id !== "computers" && !freeIds.has(id);
     const openGame = (game: GameConfig) => {
       if (isLocked(game.id)) {
         playTap();

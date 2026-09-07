@@ -5,8 +5,9 @@ export const pricing = {
     price: 0,
     period: null,
     features: [
-      "3 Learning Zones",
-      "2 Games per Zone",
+      "3 EVS worlds plus Computer Lab",
+      "All Computer Lab games",
+      "A few games in other worlds",
       "Basic Progress Tracking",
       "1 Child Profile",
     ],
