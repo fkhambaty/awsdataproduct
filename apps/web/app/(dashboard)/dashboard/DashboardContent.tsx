@@ -1099,7 +1099,7 @@ export default function DashboardPage() {
             <div className="min-w-0 flex-1">
               <p className="font-display font-bold text-slate-800">Growth &amp; smarts report</p>
               <p className="text-sm text-slate-600">
-                Subject strands (EVS themes), skill profile from game types, and plain-language next steps — sourced from play sessions.
+                Learning themes, skill profile from game types, and plain-language next steps — sourced from play sessions.
               </p>
             </div>
             <span className="shrink-0 text-slate-400 text-xl">→</span>

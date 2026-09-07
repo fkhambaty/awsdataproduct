@@ -2,7 +2,7 @@
 
 **Fun learning games for curious little minds!**
 
-An educational games platform for kids aged 5-8, aligned with the ICSE Class 2 syllabus. Features an adventure-village world with 15 zones and 45+ mini-games covering Environmental Studies (EVS).
+An educational games platform for kids aged 5-8, aligned with the ICSE Class 2 syllabus. Features 15 EVS learning worlds plus a Computer Studies exam world, with interactive mini-games and parent progress reports.
 
 **Agents (Cursor, Codex, etc.):** read [`AGENTS.md`](AGENTS.md) before changing the product. It is the source of truth for what this site is, what it is not, and where to edit.
 

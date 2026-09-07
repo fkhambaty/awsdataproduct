@@ -35,7 +35,7 @@ const nextConfig: NextConfig = {
     "@funberry/supabase",
   ],
   experimental: {
-    optimizePackageImports: ["@funberry/game-engine", "framer-motion"],
+    optimizePackageImports: ["framer-motion"],
   },
   images: {
     formats: ["image/avif", "image/webp"],

@@ -14,7 +14,7 @@
     "clean": "turbo clean",
     "typecheck": "turbo typecheck",
     "typecheck:tools": "tsc --noEmit -p scripts/tsconfig.json",
-    "test:lesson-gen": "tsx --test packages/game-engine/src/lesson/rulesEngine.test.ts",
+    "test:lesson-gen": "tsx --test packages/game-engine/src/lesson/rulesEngine.test.ts packages/game-engine/src/games/evs/computers.test.ts",
     "eval:packs": "tsx scripts/eval-learning-packs.ts"
   },
   "devDependencies": {

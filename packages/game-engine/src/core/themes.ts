@@ -224,6 +224,20 @@ const themes: Record<string, ZoneTheme> = {
     emojis: ["🕐", "🧭", "⬆️", "🗓️", "🌅"],
     pattern: "radial-gradient(circle at 40% 60%, rgba(34,197,94,0.06) 0%, transparent 50%)",
   },
+  computers: {
+    id: "computers",
+    bgGradient: "linear-gradient(135deg, #eef2ff 0%, #dbeafe 42%, #cffafe 100%)",
+    cardBg: "rgba(255,255,255,0.9)",
+    accentColor: "#4f46e5",
+    accentLight: "#e0e7ff",
+    buttonBg: "#4f46e5",
+    buttonHover: "#4338ca",
+    progressColor: "#06b6d4",
+    correctGlow: "0 0 20px rgba(79, 70, 229, 0.5)",
+    wrongShake: "0 0 15px rgba(239, 68, 68, 0.4)",
+    emojis: ["💻", "⌨️", "🖱️", "🤖", "💾"],
+    pattern: "radial-gradient(circle at 75% 25%, rgba(79,70,229,0.08) 0%, transparent 52%)",
+  },
 };
 
 const defaultTheme: ZoneTheme = {

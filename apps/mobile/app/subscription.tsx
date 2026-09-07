@@ -43,13 +43,13 @@ export default function SubscriptionScreen() {
         <Text style={styles.emoji}>✨</Text>
         <Text style={styles.title}>Upgrade to Premium</Text>
         <Text style={styles.subtitle}>
-          Unlock all 15 zones and every game!
+          Unlock every learning world and game!
         </Text>
 
         {/* Features */}
         <View style={styles.featuresBox}>
           {[
-            "All 15 Learning Zones",
+            "All Learning Worlds",
             "All Games Unlocked",
             "Detailed Progress Reports",
             "Up to 4 Child Profiles",

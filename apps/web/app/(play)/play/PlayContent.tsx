@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { zones, getZoneById, isPremium } from "@funberry/config";
 import {
+  getCurriculumSectionsForZone,
   getGamesForZone,
   getZoneTheme,
   GameShell,
@@ -17,11 +18,18 @@ import type { Child, LearningPack, Parent, Progress } from "@funberry/supabase";
 import { LeaderboardModal } from "../../components/Leaderboard";
 import { FunBerryLogo } from "../../components/FunBerryLogo";
 import { GamePlayer } from "./GamePlayer";
+import { SectionedGameList } from "./SectionedGameList";
 
 type ViewMode = "who" | "zones" | "games" | "packGames" | "playing";
 
-/** Roughly this share of each world's games is free for everyone; the rest need Premium. */
+/** Free slice for standard worlds; curriculum worlds unlock their complete first folder instead. */
 const FREE_GAME_FRACTION = 0.3;
+
+const playZones = [...zones].sort(
+  (first, second) =>
+    Number(Boolean(second.featured)) - Number(Boolean(first.featured)) ||
+    first.order - second.order,
+);
 
 /** A parent counts as paid when on a premium tier that hasn't expired (lifetime never expires). */
 function computeIsPaid(parent: Parent | null): boolean {
@@ -40,7 +48,7 @@ const KID_SAVED_PROGRESS_ZONES =
 const KID_SAVED_PROGRESS_GAMES =
   "Each game saves your stars and score when you finish a round — keep playing to level up!";
 const KID_SAVED_PROGRESS_INGAME =
-  "Finish a round to save your stars & score to your player profile.";
+  "Finish the round to save your stars!";
 
 const GAME_ICONS: Record<string, string> = {
   picture_quiz: "❓",
@@ -350,7 +358,6 @@ export default function PlayContent() {
   const [showParentGate, setShowParentGate] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [childRank, setChildRank] = useState<{ rank: number; total: number } | null>(null);
-  const [replayNonce, setReplayNonce] = useState(0);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [isPaid, setIsPaid] = useState(false);
   const [showLock, setShowLock] = useState(false);
@@ -358,6 +365,7 @@ export default function PlayContent() {
   const [starHistory, setStarHistory] = useState<Progress[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [starBurst, setStarBurst] = useState<{ n: number; key: number } | null>(null);
+  const [expandedSectionId, setExpandedSectionId] = useState<string | null>(null);
 
   // Guards each play instance so stars are credited exactly once, even if a template's
   // onComplete double-fires (e.g. React strict mode) or the component briefly remounts.
@@ -536,6 +544,10 @@ export default function PlayContent() {
     () => (selectedZone ? getGamesForZone(selectedZone) : []),
     [selectedZone]
   );
+  const curriculumSections = useMemo(
+    () => (selectedZone ? getCurriculumSectionsForZone(selectedZone) : []),
+    [selectedZone],
+  );
 
   const theme = useMemo(
     () => getZoneTheme(selectedZone ?? ""),
@@ -553,6 +565,7 @@ export default function PlayContent() {
   function handleZoneClick(zoneId: string) {
     playTap();
     setSelectedZone(zoneId);
+    setExpandedSectionId(getCurriculumSectionsForZone(zoneId)[0]?.metadata.id ?? null);
     setView("games");
   }
 
@@ -601,7 +614,7 @@ export default function PlayContent() {
     if (!selectedGame) return;
 
     // Credit each play instance only once (dedupes double onComplete calls).
-    const playKey = `${selectedGame.id}-${replayNonce}`;
+    const playKey = selectedGame.id;
     if (reportedKeyRef.current === playKey) return;
     reportedKeyRef.current = playKey;
 
@@ -939,11 +952,16 @@ export default function PlayContent() {
               Browse by Worlds 🗺️
             </h2>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-              {zones.map((zone, i) => {
+              {playZones.map((zone, i) => {
                 const zt = getZoneTheme(zone.id);
                 const zoneGamesData = getGamesForZone(zone.id);
+                const zoneFolders = getCurriculumSectionsForZone(zone.id);
                 const zoneBestStars = zoneGamesData.reduce((sum, g) => sum + (completedGames[g.id] ?? 0), 0);
-                const zoneMaxStars = zoneGamesData.length * 3;
+                const zoneMaxStars = zoneGamesData.reduce((sum, game) => sum + game.maxStars, 0);
+                const playableFolders = isPaid ? zoneFolders : zoneFolders.slice(0, 1);
+                const masteredFolders = playableFolders.filter((folder) =>
+                  folder.entries.every((entry) => (completedGames[entry.game.id] ?? 0) > 0),
+                ).length;
                 return (
                   <motion.button
                     key={zone.id}
@@ -952,17 +970,18 @@ export default function PlayContent() {
                     transition={{ delay: i * 0.02 }}
                     whileHover={{ y: -4, scale: 1.03 }}
                     whileTap={{ scale: 0.96 }}
-                    onClick={() => {
-                      playTap();
-                      setSelectedZone(zone.id);
-                      setView("games");
-                    }}
-                    className="kid-glass-panel rounded-[22px] p-4 text-center shadow-[0_12px_0_rgba(255,255,255,0.35),0_20px_26px_-16px_rgba(30,41,59,0.45)]"
+                    onClick={() => handleZoneClick(zone.id)}
+                    className="kid-glass-panel relative rounded-[22px] p-4 text-center shadow-[0_12px_0_rgba(255,255,255,0.35),0_20px_26px_-16px_rgba(30,41,59,0.45)]"
                     style={{
                       background: zt.bgGradient,
                       border: "3px solid rgba(255,255,255,0.75)",
                     }}
                   >
+                    {zone.badge && (
+                      <span className="absolute right-2 top-2 rounded-full bg-indigo-600 px-2 py-0.5 text-xs font-black tracking-wider text-white">
+                        {zone.badge}
+                      </span>
+                    )}
                     <motion.div
                       className="text-4xl"
                       animate={{ y: [0, -6, 0] }}
@@ -971,17 +990,27 @@ export default function PlayContent() {
                       {zone.emoji}
                     </motion.div>
                     <p className="mt-1 font-display text-sm font-black text-slate-800">{zone.name}</p>
-                    <p className="text-[10px] font-bold text-slate-600">{zoneGamesData.length} games</p>
-                    <div className="mt-1 flex items-center justify-center gap-0.5">
-                      {[1, 2, 3].map((s) => (
-                        <span
-                          key={s}
-                          className={`text-sm ${s <= Math.ceil(zoneBestStars / Math.max(1, zoneMaxStars / 3)) ? "" : "opacity-20 grayscale"}`}
-                        >
-                          ⭐
-                        </span>
-                      ))}
-                    </div>
+                    <p className="text-xs font-bold text-slate-600">
+                      {zoneFolders.length > 0
+                        ? isPaid ? `${zoneFolders.length} folders` : "1 free folder"
+                        : `${zoneGamesData.length} games`}
+                    </p>
+                    {zoneFolders.length > 0 ? (
+                      <p className="mt-1 text-xs font-black text-indigo-600">
+                        {masteredFolders}/{playableFolders.length} done
+                      </p>
+                    ) : (
+                      <div className="mt-1 flex items-center justify-center gap-0.5">
+                        {[1, 2, 3].map((s) => (
+                          <span
+                            key={s}
+                            className={`text-sm ${s <= Math.ceil(zoneBestStars / Math.max(1, zoneMaxStars / 3)) ? "" : "opacity-35 grayscale"}`}
+                          >
+                            ⭐
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </motion.button>
                 );
               })}
@@ -995,12 +1024,24 @@ export default function PlayContent() {
   /* ── Game List ── */
   if (view === "games" && selectedZone) {
     const zone = getZoneById(selectedZone);
-    const adventureGames = zoneGames.filter((g) => g.type === "bubble_pop" || g.type === "star_catcher");
-    const classicGames = zoneGames.filter((g) => g.type !== "bubble_pop" && g.type !== "star_catcher");
+    const curriculumGameIds = new Set(
+      curriculumSections.flatMap((section) => section.entries.map((entry) => entry.game.id)),
+    );
+    const adventureGames = zoneGames.filter(
+      (game) => !curriculumGameIds.has(game.id) && (game.type === "bubble_pop" || game.type === "star_catcher"),
+    );
+    const classicGames = zoneGames.filter(
+      (game) => !curriculumGameIds.has(game.id) && game.type !== "bubble_pop" && game.type !== "star_catcher",
+    );
 
-    // Free tier: ~30% of each world's games are playable; the rest need Premium.
-    const freeCount = Math.max(1, Math.ceil(zoneGames.length * FREE_GAME_FRACTION));
-    const freeIds = new Set(zoneGames.slice(0, freeCount).map((g) => g.id));
+    // Curriculum worlds unlock the whole first folder. Other worlds keep their existing free slice.
+    const freeIds = curriculumSections.length > 0
+      ? new Set(curriculumSections[0].entries.map((entry) => entry.game.id))
+      : new Set(
+          zoneGames
+            .slice(0, Math.max(1, Math.ceil(zoneGames.length * FREE_GAME_FRACTION)))
+            .map((game) => game.id),
+        );
     const isLocked = (id: string) => !isPaid && !freeIds.has(id);
     const openGame = (game: GameConfig) => {
       if (isLocked(game.id)) {
@@ -1146,10 +1187,25 @@ export default function PlayContent() {
               {zone?.name}
             </h2>
             <p className="mt-1 text-xs text-gray-500 sm:text-sm">{zone?.description}</p>
-            <p className="mx-auto mt-2 max-w-md text-center text-[10px] font-semibold leading-snug text-slate-500 sm:text-xs">
+            <p className="mx-auto mt-2 max-w-md text-center text-xs font-semibold leading-snug text-slate-500 sm:text-sm">
               {KID_SAVED_PROGRESS_GAMES}
             </p>
           </motion.div>
+
+          {zone?.kind === "curriculum" && curriculumSections.length > 0 && (
+            <SectionedGameList
+              sections={curriculumSections}
+              completedGames={completedGames}
+              expandedSectionId={expandedSectionId}
+              isLocked={isLocked}
+              onToggleSection={(sectionId) => {
+                playTap();
+                setExpandedSectionId((current) => current === sectionId ? null : sectionId);
+              }}
+              onOpenGame={openGame}
+              accentColor={theme.accentColor}
+            />
+          )}
 
           {/* Adventure Games */}
           {adventureGames.length > 0 && (
@@ -1383,33 +1439,13 @@ export default function PlayContent() {
       >
         <AnimatePresence mode="wait">
           <motion.div
-            key={`${selectedGame?.id}-${replayNonce}`}
+            key={selectedGame?.id}
             initial={{ opacity: 0, scale: 0.94 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.94 }}
             transition={{ type: "spring", stiffness: 200, damping: 20 }}
           >
             {renderGame()}
-            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-              <button
-                className="kid-glass-btn kid-glass-berry rounded-xl px-4 py-2 text-xs font-black sm:text-sm"
-                onClick={() => {
-                  playTap();
-                  setReplayNonce((n) => n + 1);
-                }}
-              >
-                Play Again
-              </button>
-              <button
-                className="kid-glass-btn kid-glass-sky rounded-xl px-4 py-2 text-xs font-black sm:text-sm"
-                onClick={() => {
-                  playTap();
-                  handleNextGame();
-                }}
-              >
-                Try More Games
-              </button>
-            </div>
           </motion.div>
         </AnimatePresence>
 

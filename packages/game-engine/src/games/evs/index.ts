@@ -1,4 +1,4 @@
-import type { GameConfig } from "../../types";
+import type { CurriculumSection, GameConfig } from "../../types";
 import { plantsGames } from "./plants";
 import { animalsGames } from "./animals";
 import { aboutMeGames } from "./aboutMe";
@@ -14,6 +14,7 @@ import { transportGames } from "./transport";
 import { communicationGames } from "./communication";
 import { sunMoonStarsGames } from "./sunMoonStars";
 import { timeSpaceDirectionGames } from "./timeSpaceDirection";
+import { computerSections, computersGames } from "./computers";
 import { adventureGamesByZone } from "./adventures";
 
 function withAdventures(zoneId: string, games: GameConfig[]): GameConfig[] {
@@ -37,10 +38,19 @@ export const allEvsGames: Record<string, GameConfig[]> = {
   communication: withAdventures("communication", communicationGames),
   "sun-moon-stars": withAdventures("sun-moon-stars", sunMoonStarsGames),
   "time-space-direction": withAdventures("time-space-direction", timeSpaceDirectionGames),
+  computers: withAdventures("computers", computersGames),
 };
 
 export function getGamesForZone(zoneId: string): GameConfig[] {
   return allEvsGames[zoneId] ?? [];
+}
+
+const curriculumSectionsByZone: Record<string, CurriculumSection[]> = {
+  computers: computerSections,
+};
+
+export function getCurriculumSectionsForZone(zoneId: string): CurriculumSection[] {
+  return curriculumSectionsByZone[zoneId] ?? [];
 }
 
 export {
@@ -59,4 +69,5 @@ export {
   communicationGames,
   sunMoonStarsGames,
   timeSpaceDirectionGames,
+  computersGames,
 };

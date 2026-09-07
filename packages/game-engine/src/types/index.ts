@@ -14,6 +14,28 @@ export type GameType =
   /** WebGL labs (PixiJS): drag physics, wind glide, multi-step touch missions */
   | "pixi_lab";
 
+/** Metadata for one ordered folder in a curriculum-driven world. */
+export interface CurriculumSectionMetadata {
+  id: string;
+  title: string;
+  emoji: string;
+  order: number;
+  sourceLabel: string;
+  totalSourceItems: number;
+}
+
+export type CurriculumEntryRole = "practice" | "challenge";
+
+/** Curriculum-only layout. GameConfig stays reusable and source-agnostic. */
+export interface CurriculumSection {
+  metadata: CurriculumSectionMetadata;
+  entries: {
+    game: GameConfig;
+    sourceItemIds: number[];
+    role: CurriculumEntryRole;
+  }[];
+}
+
 export interface GameConfig {
   id: string;
   zoneId: string;

@@ -8,6 +8,9 @@ export interface ZoneConfig {
   isFree: boolean;
   order: number;
   starsToUnlock: number;
+  kind?: "curriculum";
+  badge?: string;
+  featured?: boolean;
 }
 
 export const zones: ZoneConfig[] = [
@@ -175,6 +178,20 @@ export const zones: ZoneConfig[] = [
     isFree: false,
     order: 15,
     starsToUnlock: 65,
+  },
+  {
+    id: "computers",
+    name: "Computer Lab",
+    emoji: "💻",
+    evsTheme: "Computer Studies",
+    description: "Train with devices, the IPO cycle, storage, and smart AI helpers!",
+    colorKey: "sky",
+    isFree: false,
+    order: 16,
+    starsToUnlock: 70,
+    kind: "curriculum",
+    badge: "NEW",
+    featured: true,
   },
 ];
 

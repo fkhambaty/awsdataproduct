@@ -6,7 +6,7 @@ The brand name and tagline live in [`packages/config/src/brand.ts`](packages/con
 
 ## What this product is
 
-- A **village of learning zones** (15 ICSE Class 2 EVS themes) with **45+ mini-games**.
+- A **village of learning zones**: 15 ICSE Class 2 EVS themes plus a Computer Studies exam world.
 - Two surfaces: **kid play** (`/play`) and **parent dashboard** (`/dashboard`).
 - Progress = stars, best scores, coaching-style reports for parents.
 - **Premium** unlocks most games; free accounts play a slice of each world.
@@ -113,6 +113,7 @@ If you add a Postgres function or policy, add a migration under `supabase/migrat
 |--------|--------|
 | Zone name, order, free vs locked | `packages/config/src/zones.ts` |
 | New/edited EVS games | `packages/game-engine/src/games/evs/` |
+| Computer exam sections and source coverage | `docs/COMPUTER_EXAM_WORLD.md` first |
 | New game **type** / template | `packages/game-engine/src/templates/` **and** `loadGameTemplate.ts` |
 | Learning Pack OCR, generation, review or evaluation | `docs/LEARNING_PACKS.md` first |
 | Parent report logic | `packages/supabase/src/coachingReport.ts` |

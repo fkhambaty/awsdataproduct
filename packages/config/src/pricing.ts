@@ -53,7 +53,7 @@ export const pricing = {
     stripePriceId: "price_funberrykids_monthly",
     revenueCatProductId: "funberrykids_premium_monthly",
     features: [
-      "All 15 Learning Zones",
+      "All Learning Worlds",
       "All Games Unlocked",
       "Detailed Progress Reports",
       "Up to 4 Child Profiles",
@@ -72,7 +72,7 @@ export const pricing = {
     stripePriceId: "price_funberrykids_yearly",
     revenueCatProductId: "funberrykids_premium_yearly",
     features: [
-      "All 15 Learning Zones",
+      "All Learning Worlds",
       "All Games Unlocked",
       "Detailed Progress Reports",
       "Up to 4 Child Profiles",

@@ -47,7 +47,7 @@ export {
 } from "./core/progression";
 
 // Game data
-export { allEvsGames, getGamesForZone } from "./games/evs";
+export { allEvsGames, getCurriculumSectionsForZone, getGamesForZone } from "./games/evs";
 export { BOOK_PAGE_FILES, bookPageUrl } from "./data/bookPages";
 export type { BookPageFile } from "./data/bookPages";
 export {

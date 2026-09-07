@@ -4,6 +4,10 @@ FunBerry’s **zones and EVS themes** are structured to mirror the common **ICSE
 
 We **do not** copy textbook wording or images from any single publisher. This app is an **original game layer** aligned at the **theme / outcome** level. For strict page-by-page alignment with a specific “New Learning Science” or NEP-labelled book, you need that book’s **table of contents and learning outcomes** in hand; paste or attach them and we can map items to `gameId`s in `@funberry/game-engine`.
 
+The separate **Computer Lab** world is supplemental exam practice built from seven school-provided
+Computer Studies revision PDFs. It is not presented as a sixteenth EVS theme. Its source-item
+coverage is enforced in `packages/game-engine/src/games/evs/computers.test.ts`.
+
 ## Theme ↔ FunBerry zone (current)
 
 | Typical ICSE EVS theme (Grade 2) | FunBerry `zone.id` |

@@ -12,7 +12,7 @@ function barTone(pct: number) {
 export function StrandMasteryChart({ report }: { report: ParentCoachingReport }) {
   return (
     <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm sm:p-5">
-      <h2 className="font-display text-lg font-bold text-slate-800">EVS themes — mastery map</h2>
+      <h2 className="font-display text-lg font-bold text-slate-800">Learning themes — mastery map</h2>
       <p className="mb-4 text-xs text-slate-500">Each bar = stars vs max for games touched in that theme.</p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {report.strandInsights.map((s) => {
